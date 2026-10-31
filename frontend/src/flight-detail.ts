@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { compass, dash, formatDateTime, formatDistance, formatDuration, formatHeight, formatPercent, formatSpeedKmh, formatWind } from "./format";
 import { t } from "./i18n";
+import "./flight-charts";
 import "./route-map";
 import { baseStyles } from "./styles";
 import type { FlightDetailDTO } from "./types";
@@ -80,6 +81,7 @@ export class FlightDetail extends LitElement {
         </div>
       </div>
       <dl-route-map .points=${d.points} .start=${d.start} .end=${d.end} .tileUrl=${this.tileUrl} .lang=${l}></dl-route-map>
+      <dl-flight-charts .points=${d.points} .lang=${l} .dark=${this.dark}></dl-flight-charts>
       <slot></slot>
     `;
   }
