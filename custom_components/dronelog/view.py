@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import shutil
 from http import HTTPStatus
 
 from aiohttp import web
@@ -14,10 +15,7 @@ from . import const
 from .storage import RawLogStore
 
 
-def _authorised(hass: HomeAssistant, request: web.Request) -> bool:
-    domain_data = hass.data.get(const.DOMAIN)
-    if not domain_data:
-        return False
+def _authorised(domain_data: dict, request: web.Request) -> bool:
     header = request.headers.get("Authorization", "")
     supplied = header.removeprefix("Bearer ").strip() if header.startswith("Bearer ") else ""
     return bool(supplied) and hmac.compare_digest(supplied, domain_data["token"])
@@ -25,6 +23,11 @@ def _authorised(hass: HomeAssistant, request: web.Request) -> bool:
 
 def _error(message: str, status: HTTPStatus) -> web.Response:
     return web.json_response({"error": message}, status=status)
+
+
+def _free_bytes(path) -> int:
+    path.mkdir(parents=True, exist_ok=True)
+    return shutil.disk_usage(path).free
 
 
 class DroneLogUploadView(HomeAssistantView):
@@ -36,7 +39,10 @@ class DroneLogUploadView(HomeAssistantView):
 
     async def post(self, request: web.Request) -> web.Response:
         hass: HomeAssistant = request.app["hass"]
-        if not _authorised(hass, request):
+        domain_data = hass.data.get(const.DOMAIN)
+        if not domain_data:
+            return _error("Integration nicht aktiv", HTTPStatus.SERVICE_UNAVAILABLE)
+        if not _authorised(domain_data, request):
             return _error("unauthorized", HTTPStatus.UNAUTHORIZED)
         expected = request.headers.get("X-SHA256", "").lower()
         if len(expected) != 64:
@@ -49,8 +55,11 @@ class DroneLogUploadView(HomeAssistantView):
         actual = hashlib.sha256(data).hexdigest()
         if actual != expected:
             return _error("Hash stimmt nicht überein", HTTPStatus.BAD_REQUEST)
-        store: RawLogStore = hass.data[const.DOMAIN]["store"]
-        status = await hass.async_add_executor_job(store.save, actual, data)
+        store: RawLogStore = domain_data["store"]
+        if await hass.async_add_executor_job(_free_bytes, store.base) - len(data) < const.MIN_FREE_BYTES:
+            return _error("Zu wenig freier Speicherplatz", HTTPStatus.INSUFFICIENT_STORAGE)
+        name = request.headers.get("X-Filename", "")
+        status = await hass.async_add_executor_job(store.save, actual, name, data)
         return web.json_response({"status": status, "sha256": actual})
 
 
@@ -63,6 +72,9 @@ class DroneLogPingView(HomeAssistantView):
 
     async def get(self, request: web.Request) -> web.Response:
         hass: HomeAssistant = request.app["hass"]
-        if not _authorised(hass, request):
+        domain_data = hass.data.get(const.DOMAIN)
+        if not domain_data:
+            return _error("Integration nicht aktiv", HTTPStatus.SERVICE_UNAVAILABLE)
+        if not _authorised(domain_data, request):
             return _error("unauthorized", HTTPStatus.UNAUTHORIZED)
-        return web.json_response({"status": "ok"})
+        return web.json_response({"status": "ok", "app": "dronelog"})

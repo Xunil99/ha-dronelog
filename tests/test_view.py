@@ -70,10 +70,46 @@ async def test_ping_with_token_returns_ok(hass_client_no_auth, setup_dronelog):
     client = await hass_client_no_auth()
     resp = await client.get("/api/dronelog/ping", headers={"Authorization": f"Bearer {TOKEN}"})
     assert resp.status == 200
-    assert await resp.json() == {"status": "ok"}
+    assert await resp.json() == {"status": "ok", "app": "dronelog"}
 
 
 async def test_ping_wrong_token_returns_401(hass_client_no_auth, setup_dronelog):
     client = await hass_client_no_auth()
     resp = await client.get("/api/dronelog/ping", headers={"Authorization": "Bearer nope"})
     assert resp.status == 401
+
+
+async def test_upload_truncated_existing_file_is_overwritten(hass_client_no_auth, setup_dronelog, tmp_path):
+    raw = tmp_path / "dronelog" / "raw"
+    raw.mkdir(parents=True)
+    (raw / f"{SHA}.txt").write_bytes(b"")  # z. B. nach Stromausfall abgeschnitten
+    client = await hass_client_no_auth()
+    resp = await client.post("/api/dronelog/upload", data=DATA, headers=headers())
+    assert (await resp.json())["status"] == "stored"
+    assert (raw / f"{SHA}.txt").read_bytes() == DATA
+
+
+async def test_upload_writes_sidecar_with_sanitized_name(hass_client_no_auth, setup_dronelog, tmp_path):
+    client = await hass_client_no_auth()
+    await client.post("/api/dronelog/upload", data=DATA, headers=headers(name="../../evil/FlightRecord_x.txt"))
+    import json
+
+    sidecar = json.loads((tmp_path / "dronelog" / "raw" / f"{SHA}.json").read_text())
+    assert sidecar["name"] == "FlightRecord_x.txt"
+    assert "received" in sidecar
+
+
+async def test_upload_when_integration_unloaded_returns_503(hass_client_no_auth, setup_dronelog, hass):
+    client = await hass_client_no_auth()
+    await hass.config_entries.async_unload(setup_dronelog.entry_id)
+    await hass.async_block_till_done()
+    resp = await client.post("/api/dronelog/upload", data=DATA, headers=headers())
+    assert resp.status == 503
+
+
+async def test_upload_insufficient_free_space_returns_507(hass_client_no_auth, setup_dronelog, monkeypatch, tmp_path):
+    monkeypatch.setattr(const, "MIN_FREE_BYTES", 10**18)
+    client = await hass_client_no_auth()
+    resp = await client.post("/api/dronelog/upload", data=DATA, headers=headers())
+    assert resp.status == 507
+    assert not list((tmp_path / "dronelog" / "raw").glob("*.txt"))
