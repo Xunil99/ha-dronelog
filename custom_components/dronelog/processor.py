@@ -152,9 +152,12 @@ class Processor:
         data = await job(raw.read_bytes)
         stored = await job(self._store.stored_keychains, sha)
         try:
+            allowed = time.monotonic() >= self._dji_blocked_until
             try:
-                flight = await job(parse_log, data, sha, options.api_key, stored, time.monotonic() >= self._dji_blocked_until)
+                flight = await job(parse_log, data, sha, options.api_key, stored, allowed)
             except KeyServiceError:
+                if not allowed:
+                    raise  # Pause aktiv: keine Anfrage, kein Wiederholen
                 if self._retry_delay_s:
                     await asyncio.sleep(self._retry_delay_s)  # kurzer Aussetzer: einmal wiederholen, bevor pausiert wird
                 flight = await job(parse_log, data, sha, options.api_key, stored, True)
