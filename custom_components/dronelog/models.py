@@ -72,3 +72,58 @@ class WeatherSummary:
     precipitation_mm: float
     cloud_cover_pct: int
     source: str
+
+
+@dataclass(frozen=True)
+class FlightRow:
+    id: int
+    sha256: str
+    start: datetime
+    duration_s: float
+    distance_m: float
+    max_height_m: float
+    max_speed_ms: float
+    drone_serial: str
+    drone_model: str
+    battery_serial: str
+    source_name: str
+    temperature_c: float | None
+    wind_10m_ms: float | None
+
+
+@dataclass(frozen=True)
+class FlightDetail:
+    row: FlightRow
+    start_lat: float | None
+    start_lon: float | None
+    battery: BatterySummary
+    weather: WeatherSummary | None
+    samples: tuple[Sample, ...]
+
+
+@dataclass(frozen=True)
+class Totals:
+    flights: int
+    duration_s: float
+    distance_m: float
+    last_flight: FlightRow | None
+
+
+@dataclass(frozen=True)
+class BatteryPoint:
+    flight_id: int
+    start: datetime
+    charge_start: int
+    charge_end: int
+    cycles: int | None
+    health_pct: int | None
+    cell_deviation_max_v: float
+    temp_max_c: float
+    avg_power_w: float
+
+
+@dataclass(frozen=True)
+class HeatCell:
+    lat: float
+    lon: float
+    count: int
