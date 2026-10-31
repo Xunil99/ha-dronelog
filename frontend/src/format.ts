@@ -36,3 +36,15 @@ export function formatDateTime(iso: string, timeZone: string, locale: string): s
   if (Number.isNaN(date.getTime())) return dash;
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone }).format(date);
 }
+
+const DIRECTIONS_DE = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"];
+const DIRECTIONS_EN = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+
+export function compass(degrees: number, lang = "de"): string {
+  const index = Math.round((((degrees % 360) + 360) % 360) / 45) % 8;
+  return (lang.startsWith("de") ? DIRECTIONS_DE : DIRECTIONS_EN)[index];
+}
+
+export function formatWind(ms: number | null | undefined, locale: string): string {
+  return valid(ms) ? `${number(ms, locale, 1)} m/s` : dash;
+}

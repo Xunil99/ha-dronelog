@@ -33,3 +33,22 @@ describe("format", () => {
     expect(formatDateTime("kaputt", "Europe/Berlin", "de")).toBe(dash);
   });
 });
+
+import { compass, formatWind } from "./format";
+
+describe("compass and wind", () => {
+  it("compass maps degrees to 8 directions", () => {
+    expect(compass(0)).toBe("N");
+    expect(compass(44)).toBe("NO");
+    expect(compass(220)).toBe("SW");
+    expect(compass(359)).toBe("N");
+    expect(compass(-10)).toBe("N");
+  });
+  it("compass keeps English names for en", () => {
+    expect(compass(90, "en")).toBe("E");
+  });
+  it("formatWind shows m/s with one decimal", () => {
+    expect(formatWind(3, "de")).toBe("3,0 m/s");
+    expect(formatWind(null, "de")).toBe(dash);
+  });
+});
