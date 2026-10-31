@@ -6,14 +6,42 @@
         "description": "Enter this pairing code in the DroneLog app:\n\n`{token}`\n\nYou can view or renew it later in the integration options."
       }
     },
-    "abort": { "single_instance_allowed": "DroneLog is already set up." }
+    "abort": {
+      "single_instance_allowed": "DroneLog is already set up."
+    }
   },
   "options": {
     "step": {
       "init": {
         "title": "Pairing code",
         "description": "Current pairing code:\n\n`{token}`",
-        "data": { "regenerate": "Generate a new pairing code (the app must be paired again afterwards)" }
+        "data": {
+          "regenerate": "Generate a new pairing code (the app must be paired again afterwards)",
+          "api_key": "DJI API key (leave empty to keep, currently: {key_state})",
+          "weather_enabled": "Fetch weather and wind from Open-Meteo"
+        }
+      }
+    }
+  },
+  "services": {
+    "reprocess": {
+      "name": "Re-process flights",
+      "description": "Re-processes failed and waiting files (or one specific file).",
+      "fields": {
+        "sha256": {
+          "name": "SHA-256 of the file",
+          "description": "SHA-256 of the file"
+        }
+      }
+    },
+    "delete_flight": {
+      "name": "Delete flight",
+      "description": "Removes a flight from the database. The original file is kept.",
+      "fields": {
+        "flight_id": {
+          "name": "Flight ID",
+          "description": "Flight ID"
+        }
       }
     }
   }

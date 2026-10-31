@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .const import CONF_TOKEN, DOMAIN, TOKEN_BYTES
 
@@ -37,14 +38,27 @@ class DroneLogConfigFlow(ConfigFlow, domain=DOMAIN):
 
 class DroneLogOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        options = dict(self.config_entry.options)
         if user_input is not None:
             if user_input.get("regenerate"):
                 self.hass.config_entries.async_update_entry(
                     self.config_entry, data={**self.config_entry.data, CONF_TOKEN: _new_token()}
                 )
-            return self.async_create_entry(data={})
+            api_key = (user_input.get("api_key") or "").strip() or options.get("api_key", "")
+            return self.async_create_entry(data={"api_key": api_key, "weather_enabled": user_input.get("weather_enabled", True)})
+        schema = vol.Schema(
+            {
+                # Der gespeicherte Key wird nie angezeigt; leer lassen = unverändert.
+                vol.Optional("api_key", default=""): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+                vol.Optional("weather_enabled", default=options.get("weather_enabled", True)): bool,
+                vol.Optional("regenerate", default=False): bool,
+            }
+        )
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema({vol.Optional("regenerate", default=False): bool}),
-            description_placeholders={"token": self.config_entry.data[CONF_TOKEN]},
+            data_schema=schema,
+            description_placeholders={
+                "token": self.config_entry.data[CONF_TOKEN],
+                "key_state": "gespeichert" if options.get("api_key") else "nicht gesetzt",
+            },
         )

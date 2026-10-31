@@ -6,14 +6,42 @@
         "description": "Trage diesen Pairing-Code in der DroneLog-App ein:\n\n`{token}`\n\nDu kannst ihn später unter den Optionen der Integration erneut ansehen oder erneuern."
       }
     },
-    "abort": { "single_instance_allowed": "DroneLog ist bereits eingerichtet." }
+    "abort": {
+      "single_instance_allowed": "DroneLog ist bereits eingerichtet."
+    }
   },
   "options": {
     "step": {
       "init": {
         "title": "Pairing-Code",
         "description": "Aktueller Pairing-Code:\n\n`{token}`",
-        "data": { "regenerate": "Neuen Pairing-Code erzeugen (die App muss danach neu gekoppelt werden)" }
+        "data": {
+          "regenerate": "Neuen Pairing-Code erzeugen (die App muss danach neu gekoppelt werden)",
+          "api_key": "DJI-API-Key (leer lassen = unverändert, aktuell: {key_state})",
+          "weather_enabled": "Wetter und Wind aus Open-Meteo abrufen"
+        }
+      }
+    }
+  },
+  "services": {
+    "reprocess": {
+      "name": "Flüge neu auswerten",
+      "description": "Wertet fehlgeschlagene und wartende Dateien (oder eine bestimmte Datei) erneut aus.",
+      "fields": {
+        "sha256": {
+          "name": "SHA-256 der Datei",
+          "description": "SHA-256 der Datei"
+        }
+      }
+    },
+    "delete_flight": {
+      "name": "Flug löschen",
+      "description": "Entfernt einen Flug aus der Datenbank. Die Originaldatei bleibt erhalten.",
+      "fields": {
+        "flight_id": {
+          "name": "Flug-ID",
+          "description": "Flug-ID"
+        }
       }
     }
   }

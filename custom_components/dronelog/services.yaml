@@ -1,0 +1,14 @@
+reprocess:
+  fields:
+    sha256:
+      required: false
+      selector:
+        text:
+delete_flight:
+  fields:
+    flight_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
