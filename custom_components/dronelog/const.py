@@ -9,3 +9,5 @@ TOKEN_BYTES = 32
 
 # Mindestens so viel Platz muss nach dem Speichern frei bleiben, sonst 507.
 MIN_FREE_BYTES = 1024**3
+
+DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"

@@ -18,9 +18,13 @@
         "data": {
           "regenerate": "Neuen Pairing-Code erzeugen (die App muss danach neu gekoppelt werden)",
           "api_key": "DJI-API-Key (leer lassen = unverändert, aktuell: {key_state})",
-          "weather_enabled": "Wetter und Wind aus Open-Meteo abrufen"
+          "weather_enabled": "Wetter und Wind aus Open-Meteo abrufen",
+          "tile_url": "Adresse der Kartenkacheln (mit {z}, {x}, {y}); der Kartenanbieter sieht den betrachteten Ausschnitt"
         }
       }
+    },
+    "error": {
+      "invalid_tile_url": "Die Adresse muss mit http(s):// beginnen und {z}, {x} und {y} enthalten."
     }
   },
   "services": {

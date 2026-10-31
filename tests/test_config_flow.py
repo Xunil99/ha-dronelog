@@ -1,7 +1,7 @@
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dronelog.const import CONF_TOKEN, DOMAIN
+from custom_components.dronelog.const import CONF_TOKEN, DEFAULT_TILE_URL, DOMAIN
 
 
 async def test_config_flow_creates_entry_with_long_token(hass):
@@ -49,7 +49,7 @@ async def test_options_flow_saves_api_key_and_weather_flag(hass, tmp_path):
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={"api_key": "DJIKEY", "weather_enabled": False, "regenerate": False})
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {"api_key": "DJIKEY", "weather_enabled": False}
+    assert entry.options == {"api_key": "DJIKEY", "weather_enabled": False, "tile_url": DEFAULT_TILE_URL}
 
 
 async def test_options_flow_blank_key_keeps_existing_key(hass, tmp_path):

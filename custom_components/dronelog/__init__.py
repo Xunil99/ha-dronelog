@@ -13,10 +13,11 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 
-from .const import CONF_TOKEN, DOMAIN
+from .const import CONF_TOKEN, DEFAULT_TILE_URL, DOMAIN
 from .coordinator import DroneLogCoordinator
 from .db import FlightStore
 from .models import FileStatus
+from .panel import async_register_panel, async_remove_panel
 from .processor import Options, Processor
 from .storage import RawLogStore
 from .websocket_api import async_register_commands
@@ -40,6 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = {"token": entry.data[CONF_TOKEN], "store": RawLogStore(base), "db": database, "processor": processor,
                          "coordinator": coordinator}
     await coordinator.async_config_entry_first_refresh()
+    await async_register_panel(hass, entry.options.get("tile_url", DEFAULT_TILE_URL))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     if not hass.data.get(_VIEWS_KEY):
         async_register_commands(hass)
@@ -63,6 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_token_changed(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if DOMAIN in hass.data:
         hass.data[DOMAIN]["token"] = entry.data[CONF_TOKEN]
+        await async_register_panel(hass, entry.options.get("tile_url", DEFAULT_TILE_URL))
         # Neuer DJI-Key oder Einstellung: wartende Dateien erneut versuchen.
         await hass.data[DOMAIN]["processor"].reprocess()
 
@@ -98,5 +101,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         await hass.data[DOMAIN]["processor"].async_shutdown()
+        async_remove_panel(hass)
         hass.data.pop(DOMAIN, None)
     return unloaded

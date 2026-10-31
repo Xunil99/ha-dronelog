@@ -18,9 +18,13 @@
         "data": {
           "regenerate": "Generate a new pairing code (the app must be paired again afterwards)",
           "api_key": "DJI API key (leave empty to keep, currently: {key_state})",
-          "weather_enabled": "Fetch weather and wind from Open-Meteo"
+          "weather_enabled": "Fetch weather and wind from Open-Meteo",
+          "tile_url": "Map tile URL (with {z}, {x}, {y}); the tile provider can see the viewed area"
         }
       }
+    },
+    "error": {
+      "invalid_tile_url": "The URL must start with http(s):// and contain {z}, {x} and {y}."
     }
   },
   "services": {

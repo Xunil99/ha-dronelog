@@ -10,7 +10,11 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.core import callback
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
-from .const import CONF_TOKEN, DOMAIN, TOKEN_BYTES
+from .const import CONF_TOKEN, DEFAULT_TILE_URL, DOMAIN, TOKEN_BYTES
+
+
+def _valid_tile_url(url: str) -> bool:
+    return url.startswith(("http://", "https://")) and all(p in url for p in ("{z}", "{x}", "{y}"))
 
 
 def _new_token() -> str:
@@ -44,19 +48,28 @@ class DroneLogOptionsFlow(OptionsFlow):
                 self.hass.config_entries.async_update_entry(
                     self.config_entry, data={**self.config_entry.data, CONF_TOKEN: _new_token()}
                 )
+            tile_url = (user_input.get("tile_url") or DEFAULT_TILE_URL).strip()
+            if not _valid_tile_url(tile_url):
+                return self._form(options, errors={"tile_url": "invalid_tile_url"})
             api_key = (user_input.get("api_key") or "").strip() or options.get("api_key", "")
-            return self.async_create_entry(data={"api_key": api_key, "weather_enabled": user_input.get("weather_enabled", True)})
+            return self.async_create_entry(data={"api_key": api_key, "weather_enabled": user_input.get("weather_enabled", True),
+                                                 "tile_url": tile_url})
+        return self._form(options)
+
+    def _form(self, options: dict, errors: dict | None = None) -> ConfigFlowResult:
         schema = vol.Schema(
             {
                 # Der gespeicherte Key wird nie angezeigt; leer lassen = unverändert.
                 vol.Optional("api_key", default=""): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
                 vol.Optional("weather_enabled", default=options.get("weather_enabled", True)): bool,
+                vol.Optional("tile_url", default=options.get("tile_url", DEFAULT_TILE_URL)): str,
                 vol.Optional("regenerate", default=False): bool,
             }
         )
         return self.async_show_form(
             step_id="init",
             data_schema=schema,
+            errors=errors,
             description_placeholders={
                 "token": self.config_entry.data[CONF_TOKEN],
                 "key_state": "gespeichert" if options.get("api_key") else "nicht gesetzt",
