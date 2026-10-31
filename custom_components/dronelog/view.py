@@ -60,6 +60,7 @@ class DroneLogUploadView(HomeAssistantView):
             return _error("Zu wenig freier Speicherplatz", HTTPStatus.INSUFFICIENT_STORAGE)
         name = request.headers.get("X-Filename", "")
         status = await hass.async_add_executor_job(store.save, actual, name, data)
+        await domain_data["processor"].enqueue(actual)
         return web.json_response({"status": status, "sha256": actual})
 
 
