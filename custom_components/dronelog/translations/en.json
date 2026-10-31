@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up DroneLog",
+        "description": "Enter this pairing code in the DroneLog app:\n\n`{token}`\n\nYou can view or renew it later in the integration options."
+      }
+    },
+    "abort": { "single_instance_allowed": "DroneLog is already set up." }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pairing code",
+        "description": "Current pairing code:\n\n`{token}`",
+        "data": { "regenerate": "Generate a new pairing code (the app must be paired again afterwards)" }
+      }
+    }
+  }
+}

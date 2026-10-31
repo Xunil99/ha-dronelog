@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DroneLog einrichten",
+        "description": "Trage diesen Pairing-Code in der DroneLog-App ein:\n\n`{token}`\n\nDu kannst ihn später unter den Optionen der Integration erneut ansehen oder erneuern."
+      }
+    },
+    "abort": { "single_instance_allowed": "DroneLog ist bereits eingerichtet." }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pairing-Code",
+        "description": "Aktueller Pairing-Code:\n\n`{token}`",
+        "data": { "regenerate": "Neuen Pairing-Code erzeugen (die App muss danach neu gekoppelt werden)" }
+      }
+    }
+  }
+}
