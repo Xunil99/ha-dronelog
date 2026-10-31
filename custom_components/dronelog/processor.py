@@ -16,7 +16,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .db import FlightStore
 from .models import FileStatus
-from .parser import DecryptError, KeyRequiredError, KeyServiceError, ParseError, parse_log
+from .parser import DecryptError, KeyRejectedError, KeyRequiredError, KeyServiceError, ParseError, parse_log
 from .weather import fetch_weather
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ EVENT_FLIGHT_ADDED = "dronelog_flight_added"
 EVENT_QUEUE_CHANGED = "dronelog_queue_changed"
 DJI_PAUSE_S = 1.0
 DJI_BLOCK_S = 300.0
+DJI_RETRY_DELAY_S = 5.0
 
 
 @dataclass
@@ -35,12 +36,13 @@ class Options:
 
 class Processor:
     def __init__(self, hass: HomeAssistant, store: FlightStore, raw_dir: Path, get_options: Callable[[], Options],
-                 pause_s: float = DJI_PAUSE_S) -> None:
+                 pause_s: float = DJI_PAUSE_S, retry_delay_s: float = DJI_RETRY_DELAY_S) -> None:
         self._hass = hass
         self._store = store
         self._raw_dir = raw_dir
         self._get_options = get_options
         self._pause_s = pause_s
+        self._retry_delay_s = retry_delay_s
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._queued: set[str] = set()
         self._worker: asyncio.Task | None = None
@@ -150,7 +152,12 @@ class Processor:
         data = await job(raw.read_bytes)
         stored = await job(self._store.stored_keychains, sha)
         try:
-            flight = await job(parse_log, data, sha, options.api_key, stored, time.monotonic() >= self._dji_blocked_until)
+            try:
+                flight = await job(parse_log, data, sha, options.api_key, stored, time.monotonic() >= self._dji_blocked_until)
+            except KeyServiceError:
+                if self._retry_delay_s:
+                    await asyncio.sleep(self._retry_delay_s)  # kurzer Aussetzer: einmal wiederholen, bevor pausiert wird
+                flight = await job(parse_log, data, sha, options.api_key, stored, True)
         except KeyRequiredError:
             await self._set_status(sha, FileStatus.PENDING_KEY, "DJI-Key fehlt.")
             return
@@ -161,6 +168,9 @@ class Processor:
         except KeyServiceError as err:
             self._dji_blocked_until = time.monotonic() + DJI_BLOCK_S
             await self._set_status(sha, FileStatus.PENDING_KEY, str(err))
+            return
+        except KeyRejectedError as err:
+            await self._set_status(sha, FileStatus.ERROR, str(err))
             return
         except ParseError as err:
             await self._set_status(sha, FileStatus.ERROR, str(err))

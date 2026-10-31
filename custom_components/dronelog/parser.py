@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
@@ -29,6 +30,10 @@ class DecryptError(Exception):
 
 class KeyServiceError(Exception):
     """DJI-Schlüsseldienst nicht erreichbar oder liefert einen Fehler (später erneut versuchen)."""
+
+
+class KeyRejectedError(Exception):
+    """DJI lehnt die Schlüsselanfrage für genau diese Datei ab (kein Dienstausfall)."""
 
 
 class ParseError(Exception):
@@ -167,8 +172,16 @@ def parse_log(data: bytes, sha256: str, api_key: str | None, stored_keychains: s
                 keychains = log.fetch_keychains(api_key, cache=False)
             except ApiKeyError as err:
                 raise DecryptError("DJI-API-Key ungültig.") from err
-            except (ApiError, ValueError, OSError) as err:
-                raise KeyServiceError("DJI-Schlüsseldienst nicht erreichbar.") from err
+            except ApiError as err:
+                text = str(err)
+                match = re.search(r"returned status (\d{3})", text)
+                specific = text.startswith("DJI API error:") or (
+                    match is not None and match.group(1).startswith("4") and match.group(1) not in ("403", "429"))
+                if specific:
+                    raise KeyRejectedError(f"DJI lehnt die Schlüsselanfrage ab ({text[:100]}).") from err
+                raise KeyServiceError(f"DJI-Schlüsseldienst nicht erreichbar ({text[:100]}).") from err
+            except (ValueError, OSError) as err:
+                raise KeyServiceError(f"DJI-Schlüsseldienst nicht erreichbar ({type(err).__name__}).") from err
             keychains_json = serialize_keychains(keychains)
         else:
             raise KeyRequiredError("DJI-Key fehlt.")

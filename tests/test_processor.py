@@ -10,7 +10,7 @@ from custom_components.dronelog import processor as processor_module
 from custom_components.dronelog.const import DOMAIN
 from custom_components.dronelog.db import FlightStore
 from custom_components.dronelog.models import FileStatus, WeatherSummary
-from custom_components.dronelog.parser import DecryptError, KeyRequiredError, KeyServiceError, ParseError
+from custom_components.dronelog.parser import DecryptError, KeyRejectedError, KeyRequiredError, KeyServiceError, ParseError
 from custom_components.dronelog.processor import Options, Processor
 from tests.conftest import TOKEN
 from tests.factories import make_flight
@@ -52,7 +52,7 @@ def env(hass, tmp_path, monkeypatch):
     monkeypatch.setattr(processor_module, "fetch_weather", fake_weather)
     options = Options(api_key="KEY", weather_enabled=True)
     store = FlightStore(tmp_path / "d.db")
-    proc = Processor(hass, store, raw, lambda: options, pause_s=0)
+    proc = Processor(hass, store, raw, lambda: options, pause_s=0, retry_delay_s=0)
     return Env(hass, store, raw, options, parse_calls, weather_calls, proc)
 
 
@@ -172,7 +172,7 @@ async def test_processor_skips_weather_when_disabled_or_no_position(env, monkeyp
 async def test_processor_restart_requeues_pending(env, hass, tmp_path):
     env.store.set_file_status("a" * 64, FileStatus.PENDING)
     write_raw(env.raw, "a" * 64)
-    fresh = Processor(hass, env.store, env.raw, lambda: env.options, pause_s=0)
+    fresh = Processor(hass, env.store, env.raw, lambda: env.options, pause_s=0, retry_delay_s=0)
     assert await fresh.reprocess() == 1
     await fresh.run_until_idle()
     assert env.store.has_flight("a" * 64)
@@ -265,7 +265,7 @@ async def test_processor_stops_contacting_dji_after_service_failure(env, monkeyp
     for n in "123":
         write_raw(env.raw, n * 64)
     await run(env, "1" * 64, "2" * 64, "3" * 64)
-    assert fetch_flags == [True, False, False]
+    assert fetch_flags == [True, True, False, False]   # erste Datei wird einmal wiederholt, danach pausiert
     assert all(env.store.file_status(n * 64)[0] is FileStatus.PENDING_KEY for n in "123")
 
 
@@ -352,3 +352,38 @@ async def test_pending_key_files_are_retried_hourly(hass, setup_dronelog, tmp_pa
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(hours=1, minutes=1))
     await hass.async_block_till_done(wait_background_tasks=True)
     assert db.has_flight(sha)
+
+
+async def test_processor_rejected_file_is_error_and_does_not_block_others(env, monkeypatch):
+    flags = []
+
+    def parse(data, sha, api_key, stored, allow_fetch=True):
+        flags.append(allow_fetch)
+        if sha == "1" * 64:
+            raise KeyRejectedError("DJI lehnt ab (400)")
+        return make_flight(sha=sha)
+
+    monkeypatch.setattr(processor_module, "parse_log", parse)
+    for n in "12":
+        write_raw(env.raw, n * 64)
+    await run(env, "1" * 64, "2" * 64)
+    assert env.store.file_status("1" * 64)[0] is FileStatus.ERROR
+    assert env.store.has_flight("2" * 64)
+    assert flags == [True, True]
+
+
+async def test_processor_retries_transient_service_error_once_before_blocking(env, monkeypatch):
+    attempts = []
+
+    def parse(data, sha, api_key, stored, allow_fetch=True):
+        attempts.append(sha)
+        if len(attempts) == 1:
+            raise KeyServiceError("kurzer Aussetzer")
+        return make_flight(sha=sha)
+
+    monkeypatch.setattr(processor_module, "parse_log", parse)
+    write_raw(env.raw, "a" * 64)
+    write_raw(env.raw, "b" * 64)
+    await run(env, "a" * 64, "b" * 64)
+    assert env.store.has_flight("a" * 64) and env.store.has_flight("b" * 64)
+    assert attempts == ["a" * 64, "a" * 64, "b" * 64]

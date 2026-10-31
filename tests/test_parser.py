@@ -13,6 +13,7 @@ from custom_components.dronelog import parser
 from custom_components.dronelog.models import Sample
 from custom_components.dronelog.parser import (
     DecryptError,
+    KeyRejectedError,
     KeyRequiredError,
     KeyServiceError,
     ParseError,
@@ -231,3 +232,28 @@ def test_log_without_frames_and_without_details_summary_is_parse_error(monkeypat
     patch_log(monkeypatch, FakeLog(8, [], details(total_time=0.0)))
     with pytest.raises(ParseError):
         parse_log(b"x", SHA, api_key=None)
+
+
+@pytest.mark.parametrize(("message", "expected"), [
+    ("DJI API returned status 400: bad request", KeyRejectedError),
+    ("DJI API error: invalid flight record", KeyRejectedError),
+    ("DJI API returned status 503: unavailable", KeyServiceError),
+    ("DJI API returned status 429: too many", KeyServiceError),
+    ("Network error: ConnectTimeout", KeyServiceError),
+])
+def test_dji_api_errors_are_classified(monkeypatch, message, expected):
+    from pydjirecord.error import ApiError
+
+    patch_log(monkeypatch, FakeLog(14, [], key_error=ApiError(message)))
+    with pytest.raises(expected):
+        parse_log(b"x", SHA, api_key="k")
+
+
+def test_service_error_message_names_the_reason_without_secrets(monkeypatch):
+    from pydjirecord.error import ApiError
+
+    patch_log(monkeypatch, FakeLog(14, [], key_error=ApiError("Network error: ConnectTimeout")))
+    with pytest.raises(KeyServiceError) as info:
+        parse_log(b"x", SHA, api_key="GEHEIMERKEY")
+    assert "ConnectTimeout" in str(info.value)
+    assert "GEHEIMERKEY" not in str(info.value)
