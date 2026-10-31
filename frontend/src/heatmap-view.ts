@@ -26,6 +26,7 @@ export class HeatmapView extends LitElement {
   declare loaded: boolean;
   private map?: L.Map;
   private heat?: L.Layer;
+  private clickToken = 0;
 
   constructor() {
     super();
@@ -73,7 +74,13 @@ export class HeatmapView extends LitElement {
   }
 
   async handleCellClick(lat: number, lon: number) {
-    this.flights = await new DroneLogApi(this.hass).cellFlights(lat, lon, this.precision);
+    const request = ++this.clickToken;
+    try {
+      const flights = await new DroneLogApi(this.hass).cellFlights(lat, lon, this.precision);
+      if (request === this.clickToken) this.flights = flights;
+    } catch {
+      if (request === this.clickToken) this.flights = [];
+    }
   }
 
   private open(id: number) {
@@ -99,18 +106,22 @@ export class HeatmapView extends LitElement {
     </div>`;
   }
 
-  updated() {
+  updated(changed: Map<string, unknown>) {
     const container = this.renderRoot.querySelector(".map") as HTMLElement | null;
     if (!container || this.cells.length === 0) return;
+    const created = !this.map;
     if (!this.map) {
       this.map = L.map(container).setView([0, 0], 2);
       if (this.tileUrl) L.tileLayer(this.tileUrl, { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(this.map);
       this.map.on("click", (event: L.LeafletMouseEvent) => void this.handleCellClick(event.latlng.lat, event.latlng.lng));
     }
+    // HA setzt bei jedem Zustandswechsel ein neues hass: nur bei neuen Zellen neu zeichnen, sonst springt die Karte zurück
+    if (!created && !changed.has("cells")) return;
     if (this.heat) this.map.removeLayer(this.heat);
-    if (!canvasSupported()) return;
-    const peak = Math.max(...this.cells.map((c) => c.count));
-    this.heat = L.heatLayer(this.cells.map((c) => [c.lat, c.lon, c.count / peak]), { radius: 32, blur: 20, maxZoom: 14, minOpacity: 0.45 }).addTo(this.map);
+    if (canvasSupported()) {
+      const peak = Math.max(...this.cells.map((c) => c.count));
+      this.heat = L.heatLayer(this.cells.map((c) => [c.lat, c.lon, c.count / peak]), { radius: 32, blur: 20, maxZoom: 14, minOpacity: 0.45 }).addTo(this.map);
+    }
     this.map.fitBounds(L.latLngBounds(this.cells.map((c) => [c.lat, c.lon] as L.LatLngTuple)), { padding: [30, 30], maxZoom: 14 });
   }
 
@@ -118,6 +129,7 @@ export class HeatmapView extends LitElement {
     super.disconnectedCallback();
     this.map?.remove();
     this.map = undefined;
+    this.heat = undefined;
   }
 }
 customElements.define("dl-heatmap-view", HeatmapView);

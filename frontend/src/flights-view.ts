@@ -25,6 +25,7 @@ export class FlightsView extends LitElement {
     loading: { state: true },
     error: { state: true },
     showDetail: { state: true },
+    detailError: { state: true },
   };
   declare hass: HassLike;
   declare narrow: boolean;
@@ -41,6 +42,9 @@ export class FlightsView extends LitElement {
   declare loading: boolean;
   declare error: boolean;
   declare showDetail: boolean;
+  declare detailError: boolean;
+  private listToken = 0;
+  private detailToken = 0;
 
   constructor() {
     super();
@@ -55,6 +59,7 @@ export class FlightsView extends LitElement {
     this.loading = false;
     this.error = false;
     this.showDetail = false;
+    this.detailError = false;
   }
 
   static styles = [
@@ -96,36 +101,48 @@ export class FlightsView extends LitElement {
   }
 
   private async loadFlights(reset: boolean) {
+    if (!reset && this.loading) return;  // Doppelklick auf "Mehr laden"
+    const token = ++this.listToken;
+    const offset = reset ? 0 : this.flights.length;
     this.loading = true;
     this.error = false;
     try {
       const result = await this.api.flights({
         limit: PAGE,
-        offset: reset ? 0 : this.flights.length,
+        offset,
         drone: this.droneFilter || undefined,
         battery: this.batteryFilter || undefined,
       });
+      if (token !== this.listToken) return;  // inzwischen kam eine neuere Anfrage (z. B. anderer Filter)
       this.flights = reset ? result.flights : [...this.flights, ...result.flights];
       this.total = result.total;
       if (reset) {
-        const first = this.initialId ?? result.flights[0]?.id;
-        if (first !== undefined) await this.selectFlight(first, false);
+        const jump = this.initialId;
+        this.initialId = undefined;  // der Sprung aus der Heatmap gilt nur einmal
+        const first = jump ?? result.flights[0]?.id;
+        if (first !== undefined) await this.selectFlight(first, jump !== undefined);
         else this.detail = undefined;
       }
     } catch {
-      this.error = true;
+      if (token === this.listToken) this.error = true;
     } finally {
-      this.loading = false;
+      if (token === this.listToken) this.loading = false;
     }
   }
 
   private async selectFlight(id: number, openDetail = true) {
+    const token = ++this.detailToken;
     this.selectedId = id;
+    this.detailError = false;
     if (openDetail) this.showDetail = true;
     try {
-      this.detail = await this.api.flight(id);
+      const detail = await this.api.flight(id);
+      if (token === this.detailToken) this.detail = detail;  // nur die Antwort auf den letzten Klick zählt
     } catch {
-      this.error = true;
+      if (token === this.detailToken) {
+        this.detail = undefined;
+        this.detailError = true;
+      }
     }
   }
 
@@ -162,11 +179,13 @@ export class FlightsView extends LitElement {
           @select=${(e: CustomEvent<number>) => void this.selectFlight(e.detail)}
         ></dl-flight-list>
         ${this.flights.length < this.total
-          ? html`<button class="more" @click=${() => void this.loadFlights(false)}>${t("load_more", l)}</button>`
+          ? html`<button class="more" ?disabled=${this.loading} @click=${() => void this.loadFlights(false)}>${t("load_more", l)}</button>`
           : nothing}
       </div>
     `;
-    const detail = html`<dl-flight-detail
+    const detail = this.detailError
+      ? html`<p class="muted">${t("error", l)}</p>`
+      : html`<dl-flight-detail
       .detail=${this.detail}
       .lang=${l}
       .timeZone=${this.timeZone}

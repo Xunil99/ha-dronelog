@@ -59,13 +59,14 @@ export class FlightDetail extends LitElement {
       <div class="cards">
         <div class="card">
           <h3>${t("battery", l)}</h3>
+          ${!b ? html`<p class="muted">${t("no_battery", l)}</p>` : html`
           ${this.row(t("charge", l), `${formatPercent(b.charge_start)} → ${formatPercent(b.charge_end)}`)}
           ${this.row(t("power_avg", l), `${Math.round(b.avg_power_w)} W`)}
           ${this.row(t("power_peak", l), `${Math.round(b.peak_power_w)} W`)}
           ${this.row(t("cell_deviation", l), `${Math.round(b.cell_deviation_max_v * 1000)} mV`)}
           ${this.row(t("temperature", l), `${Math.round(b.temp_min_c)} … ${Math.round(b.temp_max_c)} °C`)}
           ${this.row(t("cycles", l), b.cycles === null ? dash : String(b.cycles))}
-          ${this.row(t("health", l), formatPercent(b.health_pct))}
+          ${this.row(t("health", l), formatPercent(b.health_pct))}`}
         </div>
         <div class="card">
           <h3>${t("weather", l)}</h3>

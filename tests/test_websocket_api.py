@@ -151,3 +151,21 @@ async def test_commands_when_integration_not_loaded_return_error(hass, hass_ws_c
     response = await call(client, command, **data)
     assert not response["success"]
     assert response["error"]["code"] in ("not_loaded", "unknown_command")
+
+
+async def test_flight_without_samples_and_empty_battery_returns_battery_null(hass, hass_ws_client, setup_dronelog):
+    """Alte Logs ohne Zeitreihe haben Platzhalter-Akkuwerte (0): sie dürfen nicht als echte Messwerte erscheinen."""
+    empty = make_battery(charge_start=0, charge_end=0, min_voltage=0.0, max_voltage=0.0, peak_current_a=0.0, avg_power_w=0.0, peak_power_w=0.0,
+                         temp_min_c=0.0, temp_max_c=0.0, cell_deviation_max_v=0.0, full_capacity_mah=0, cycles=None, health_pct=None)
+    await add(hass, make_flight(samples=(), battery_summary=empty))
+    result = (await call(await hass_ws_client(hass), "flight", flight_id=1))["result"]
+    assert result["battery"] is None
+
+
+async def test_batteries_history_skips_placeholder_battery_values(hass, hass_ws_client, setup_dronelog):
+    empty = make_battery(charge_start=0, charge_end=0, full_capacity_mah=0, peak_power_w=0.0, avg_power_w=0.0, temp_max_c=0.0, temp_min_c=0.0)
+    await add(hass, make_flight(sha="1" * 64, battery="B1", start=later(1), samples=(), battery_summary=empty),
+              make_flight(sha="2" * 64, battery="B1", start=later(2)))
+    battery = (await call(await hass_ws_client(hass), "batteries"))["result"]["batteries"][0]
+    assert battery["flights"] == 2
+    assert len(battery["history"]) == 1

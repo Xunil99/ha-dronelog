@@ -224,6 +224,8 @@ class FlightStore:
         points = []
         for flight_id, start, battery_json in rows:
             b = json.loads(battery_json)
+            if not any((b["charge_start"], b["charge_end"], b["full_capacity_mah"], b["peak_power_w"], b["avg_power_w"])):
+                continue  # Platzhalter aus Logs ohne Zeitreihe
             points.append(BatteryPoint(flight_id=flight_id, start=datetime.fromisoformat(start), charge_start=b["charge_start"],
                                        charge_end=b["charge_end"], cycles=b["cycles"], health_pct=b["health_pct"],
                                        cell_deviation_max_v=b["cell_deviation_max_v"], temp_max_c=b["temp_max_c"], avg_power_w=b["avg_power_w"]))

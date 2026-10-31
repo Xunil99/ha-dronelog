@@ -44,7 +44,7 @@ export class RouteMap extends LitElement {
   ];
 
   private get hasPosition() {
-    return this.points.some((p) => p.lat !== null && p.lon !== null);
+    return this.start !== null || this.end !== null || this.points.some((p) => p.lat !== null && p.lon !== null);
   }
 
   render() {
@@ -89,7 +89,14 @@ export class RouteMap extends LitElement {
     }
     if (this.start) L.circleMarker([this.start.lat, this.start.lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#2e7d32", fillOpacity: 1 }).addTo(this.layer);
     if (this.end) L.circleMarker([this.end.lat, this.end.lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#c62828", fillOpacity: 1 }).addTo(this.layer);
-    if (bounds.length) this.map.fitBounds(L.latLngBounds(bounds), { padding: [20, 20] });
+    if (this.start) bounds.push([this.start.lat, this.start.lon]);
+    if (this.end) bounds.push([this.end.lat, this.end.lon]);
+    for (const p of this.points) if (p.lat !== null && p.lon !== null) bounds.push([p.lat, p.lon]);
+    if (bounds.length === 0) return;
+    const area = L.latLngBounds(bounds);
+    // Ein einzelner Punkt (oder Start = Landung) ergibt keine Fläche: dann nah heranzoomen statt Weltkarte
+    if (area.getNorthEast().equals(area.getSouthWest())) this.map.setView(area.getCenter(), 16);
+    else this.map.fitBounds(area, { padding: [20, 20] });
   }
 
   private destroyMap() {

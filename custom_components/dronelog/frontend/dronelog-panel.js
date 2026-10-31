@@ -659,7 +659,8 @@ var U = {
 		drones: "Drohnen",
 		battery_history: "Akkuverlauf je Akku",
 		heatmap: "Heatmap der Flugorte",
-		heatmap_hint: "Klick auf die Karte zeigt die Flüge an dieser Stelle"
+		heatmap_hint: "Klick auf die Karte zeigt die Flüge an dieser Stelle",
+		no_battery: "Keine Akkudaten vorhanden"
 	},
 	en: {
 		tab_flights: "Flights",
@@ -699,7 +700,8 @@ var U = {
 		drones: "Drones",
 		battery_history: "Battery history",
 		heatmap: "Heatmap of flight locations",
-		heatmap_hint: "Click the map to list the flights at that spot"
+		heatmap_hint: "Click the map to list the flights at that spot",
+		no_battery: "No battery data available"
 	}
 };
 function W(e, t) {
@@ -7650,7 +7652,7 @@ var no = class extends je {
 		];
 	}
 	get hasPosition() {
-		return this.points.some((e) => e.lat !== null && e.lon !== null);
+		return this.start !== null || this.end !== null || this.points.some((e) => e.lat !== null && e.lon !== null);
 	}
 	render() {
 		if (!this.hasPosition) return z`<p class="muted">${W("no_position", this.lang)}</p>`;
@@ -7695,7 +7697,11 @@ var no = class extends je {
 			weight: 2,
 			fillColor: "#c62828",
 			fillOpacity: 1
-		}).addTo(this.layer), n.length && this.map.fitBounds(Za.default.latLngBounds(n), { padding: [20, 20] });
+		}).addTo(this.layer), this.start && n.push([this.start.lat, this.start.lon]), this.end && n.push([this.end.lat, this.end.lon]);
+		for (let e of this.points) e.lat !== null && e.lon !== null && n.push([e.lat, e.lon]);
+		if (n.length === 0) return;
+		let r = Za.default.latLngBounds(n);
+		r.getNorthEast().equals(r.getSouthWest()) ? this.map.setView(r.getCenter(), 16) : this.map.fitBounds(r, { padding: [20, 20] });
 	}
 	destroyMap() {
 		this.resizeObserver?.disconnect(), this.map?.remove(), this.map = void 0, this.layer = void 0;
@@ -7747,13 +7753,14 @@ var ro = class extends je {
       <div class="cards">
         <div class="card">
           <h3>${W("battery", i)}</h3>
+          ${n ? z`
           ${this.row(W("charge", i), `${Ve(n.charge_start)} → ${Ve(n.charge_end)}`)}
           ${this.row(W("power_avg", i), `${Math.round(n.avg_power_w)} W`)}
           ${this.row(W("power_peak", i), `${Math.round(n.peak_power_w)} W`)}
           ${this.row(W("cell_deviation", i), `${Math.round(n.cell_deviation_max_v * 1e3)} mV`)}
           ${this.row(W("temperature", i), `${Math.round(n.temp_min_c)} … ${Math.round(n.temp_max_c)} °C`)}
           ${this.row(W("cycles", i), n.cycles === null ? "–" : String(n.cycles))}
-          ${this.row(W("health", i), Ve(n.health_pct))}
+          ${this.row(W("health", i), Ve(n.health_pct))}` : z`<p class="muted">${W("no_battery", i)}</p>`}
         </div>
         <div class="card">
           <h3>${W("weather", i)}</h3>
@@ -7843,11 +7850,12 @@ var ao = 50, oo = class extends je {
 			batteryFilter: { state: !0 },
 			loading: { state: !0 },
 			error: { state: !0 },
-			showDetail: { state: !0 }
+			showDetail: { state: !0 },
+			detailError: { state: !0 }
 		};
 	}
 	constructor() {
-		super(), this.narrow = !1, this.tileUrl = "", this.flights = [], this.total = 0, this.drones = [], this.batteries = [], this.droneFilter = "", this.batteryFilter = "", this.loading = !1, this.error = !1, this.showDetail = !1;
+		super(), this.listToken = 0, this.detailToken = 0, this.narrow = !1, this.tileUrl = "", this.flights = [], this.total = 0, this.drones = [], this.batteries = [], this.droneFilter = "", this.batteryFilter = "", this.loading = !1, this.error = !1, this.showDetail = !1, this.detailError = !1;
 	}
 	static {
 		this.styles = [Ya, h`
@@ -7878,30 +7886,37 @@ var ao = 50, oo = class extends je {
 		} catch {}
 	}
 	async loadFlights(e) {
+		if (!e && this.loading) return;
+		let t = ++this.listToken, n = e ? 0 : this.flights.length;
 		this.loading = !0, this.error = !1;
 		try {
-			let t = await this.api.flights({
+			let r = await this.api.flights({
 				limit: ao,
-				offset: e ? 0 : this.flights.length,
+				offset: n,
 				drone: this.droneFilter || void 0,
 				battery: this.batteryFilter || void 0
 			});
-			if (this.flights = e ? t.flights : [...this.flights, ...t.flights], this.total = t.total, e) {
-				let e = this.initialId ?? t.flights[0]?.id;
-				e === void 0 ? this.detail = void 0 : await this.selectFlight(e, !1);
+			if (t !== this.listToken) return;
+			if (this.flights = e ? r.flights : [...this.flights, ...r.flights], this.total = r.total, e) {
+				let e = this.initialId;
+				this.initialId = void 0;
+				let t = e ?? r.flights[0]?.id;
+				t === void 0 ? this.detail = void 0 : await this.selectFlight(t, e !== void 0);
 			}
 		} catch {
-			this.error = !0;
+			t === this.listToken && (this.error = !0);
 		} finally {
-			this.loading = !1;
+			t === this.listToken && (this.loading = !1);
 		}
 	}
 	async selectFlight(e, t = !0) {
-		this.selectedId = e, t && (this.showDetail = !0);
+		let n = ++this.detailToken;
+		this.selectedId = e, this.detailError = !1, t && (this.showDetail = !0);
 		try {
-			this.detail = await this.api.flight(e);
+			let t = await this.api.flight(e);
+			n === this.detailToken && (this.detail = t);
 		} catch {
-			this.error = !0;
+			n === this.detailToken && (this.detail = void 0, this.detailError = !0);
 		}
 	}
 	onFilter(e) {
@@ -7931,9 +7946,9 @@ var ao = 50, oo = class extends je {
           .timeZone=${this.timeZone}
           @select=${(e) => void this.selectFlight(e.detail)}
         ></dl-flight-list>
-        ${this.flights.length < this.total ? z`<button class="more" @click=${() => void this.loadFlights(!1)}>${W("load_more", e)}</button>` : B}
+        ${this.flights.length < this.total ? z`<button class="more" ?disabled=${this.loading} @click=${() => void this.loadFlights(!1)}>${W("load_more", e)}</button>` : B}
       </div>
-    `, n = z`<dl-flight-detail
+    `, n = this.detailError ? z`<p class="muted">${W("error", e)}</p>` : z`<dl-flight-detail
       .detail=${this.detail}
       .lang=${e}
       .timeZone=${this.timeZone}
@@ -8027,7 +8042,7 @@ var fo = [
 		};
 	}
 	constructor() {
-		super(), this.batteries = [], this.metric = "health_pct";
+		super(), this.rebuilds = 0, this.batteries = [], this.metric = "health_pct";
 	}
 	static {
 		this.styles = [
@@ -8066,14 +8081,15 @@ var fo = [
       </div>
     </div>`;
 	}
-	updated() {
-		this.plot?.destroy(), this.plot = void 0;
-		let e = this.renderRoot.querySelector("#plot");
-		if (!e || this.batteries.length === 0 || !Ka()) return;
-		let { x: t, series: n } = lo(this.batteries, this.metric);
+	updated(e) {
+		if (!e.has("batteries") && !e.has("metric")) return;
+		this.rebuilds++, this.plot?.destroy(), this.plot = void 0;
+		let t = this.renderRoot.querySelector("#plot");
+		if (!t || this.batteries.length === 0 || !Ka()) return;
+		let { x: n, series: r } = lo(this.batteries, this.metric);
 		try {
 			this.plot = new Wa({
-				width: e.clientWidth || 600,
+				width: t.clientWidth || 600,
 				height: 240,
 				legend: { show: !1 },
 				scales: { x: { time: !0 } },
@@ -8085,13 +8101,13 @@ var fo = [
 					spanGaps: !0,
 					points: { show: !0 }
 				}))]
-			}, [t, ...n], e);
+			}, [n, ...r], t);
 		} catch {
 			this.plot = void 0;
 		}
 	}
 	disconnectedCallback() {
-		super.disconnectedCallback(), this.plot?.destroy();
+		super.disconnectedCallback(), this.plot?.destroy(), this.plot = void 0;
 	}
 };
 // node_modules/leaflet.heat/dist/leaflet-heat.js
@@ -8222,7 +8238,7 @@ var ho = class extends je {
 		};
 	}
 	constructor() {
-		super(), this.tileUrl = "", this.cells = [], this.precision = 300, this.flights = [], this.loaded = !1;
+		super(), this.clickToken = 0, this.tileUrl = "", this.cells = [], this.precision = 300, this.flights = [], this.loaded = !1;
 	}
 	static {
 		this.styles = [
@@ -8255,7 +8271,13 @@ var ho = class extends je {
 		this.precision = Number(e.target.value), this.flights = [], this.load();
 	}
 	async handleCellClick(e, t) {
-		this.flights = await new Pe(this.hass).cellFlights(e, t, this.precision);
+		let n = ++this.clickToken;
+		try {
+			let r = await new Pe(this.hass).cellFlights(e, t, this.precision);
+			n === this.clickToken && (this.flights = r);
+		} catch {
+			n === this.clickToken && (this.flights = []);
+		}
 	}
 	open(e) {
 		this.dispatchEvent(new CustomEvent("open-flight", {
@@ -8279,29 +8301,35 @@ var ho = class extends je {
       ${this.flights.length ? z`<ul>${this.flights.map((t) => z`<li @click=${() => this.open(t.id)}>${He(t.start, this.hass?.config?.time_zone ?? "UTC", e)} · ${Le(t.duration_s)} · ${t.drone_model}</li>`)}</ul>` : B}
     </div>`;
 	}
-	updated() {
-		let e = this.renderRoot.querySelector(".map");
-		if (!e || this.cells.length === 0 || (this.map || (this.map = Za.default.map(e).setView([0, 0], 2), this.tileUrl && Za.default.tileLayer(this.tileUrl, {
+	updated(e) {
+		let t = this.renderRoot.querySelector(".map");
+		if (!t || this.cells.length === 0) return;
+		let n = !this.map;
+		if (this.map || (this.map = Za.default.map(t).setView([0, 0], 2), this.tileUrl && Za.default.tileLayer(this.tileUrl, {
 			maxZoom: 19,
 			attribution: "© OpenStreetMap"
-		}).addTo(this.map), this.map.on("click", (e) => void this.handleCellClick(e.latlng.lat, e.latlng.lng))), this.heat && this.map.removeLayer(this.heat), !Ka())) return;
-		let t = Math.max(...this.cells.map((e) => e.count));
-		this.heat = Za.default.heatLayer(this.cells.map((e) => [
-			e.lat,
-			e.lon,
-			e.count / t
-		]), {
-			radius: 32,
-			blur: 20,
-			maxZoom: 14,
-			minOpacity: .45
-		}).addTo(this.map), this.map.fitBounds(Za.default.latLngBounds(this.cells.map((e) => [e.lat, e.lon])), {
-			padding: [30, 30],
-			maxZoom: 14
-		});
+		}).addTo(this.map), this.map.on("click", (e) => void this.handleCellClick(e.latlng.lat, e.latlng.lng))), n || e.has("cells")) {
+			if (this.heat && this.map.removeLayer(this.heat), Ka()) {
+				let e = Math.max(...this.cells.map((e) => e.count));
+				this.heat = Za.default.heatLayer(this.cells.map((t) => [
+					t.lat,
+					t.lon,
+					t.count / e
+				]), {
+					radius: 32,
+					blur: 20,
+					maxZoom: 14,
+					minOpacity: .45
+				}).addTo(this.map);
+			}
+			this.map.fitBounds(Za.default.latLngBounds(this.cells.map((e) => [e.lat, e.lon])), {
+				padding: [30, 30],
+				maxZoom: 14
+			});
+		}
 	}
 	disconnectedCallback() {
-		super.disconnectedCallback(), this.map?.remove(), this.map = void 0;
+		super.disconnectedCallback(), this.map?.remove(), this.map = void 0, this.heat = void 0;
 	}
 };
 customElements.define("dl-heatmap-view", ho);

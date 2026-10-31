@@ -51,4 +51,19 @@ describe("route-map", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(lines(el)).toHaveLength(3);
   });
+
+  it("zooms to a single positioned point instead of showing the world map", async () => {
+    const points = makePoints(5).map((p, i) => (i === 2 ? p : { ...p, lat: null, lon: null }));
+    const el = await mount({ points, start: null, end: null, tileUrl: "", lang: "de" });
+    expect(el.map).toBeDefined();
+    expect(el.map!.getZoom()).toBeGreaterThan(10);
+    expect(Math.abs(el.map!.getCenter().lat - points[2].lat!)).toBeLessThan(0.01);
+  });
+
+  it("draws the map from start and end position when the flight has no track", async () => {
+    const el = await mount({ points: [], start: { lat: 47.5, lon: 11 }, end: { lat: 47.51, lon: 11.002 }, tileUrl: "", lang: "de" });
+    expect(el.shadowRoot!.textContent).not.toContain("Keine Positionsdaten");
+    expect(el.map).toBeDefined();
+    expect(el.map!.getZoom()).toBeGreaterThan(8);
+  });
 });

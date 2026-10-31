@@ -23,6 +23,7 @@ export class BatteryHistory extends LitElement {
   declare batteries: BatteryDTO[];
   declare metric: BatteryMetric;
   private plot?: uPlot;
+  rebuilds = 0;
 
   constructor() {
     super();
@@ -71,7 +72,10 @@ export class BatteryHistory extends LitElement {
     </div>`;
   }
 
-  updated() {
+  updated(changed: Map<string, unknown>) {
+    // HA setzt bei jedem Zustandswechsel ein neues hass: das Diagramm nur bei neuen Daten/Messgröße neu bauen
+    if (!changed.has("batteries") && !changed.has("metric")) return;
+    this.rebuilds++;
     this.plot?.destroy();
     this.plot = undefined;
     const container = this.renderRoot.querySelector("#plot") as HTMLElement | null;
@@ -95,6 +99,7 @@ export class BatteryHistory extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.plot?.destroy();
+    this.plot = undefined;
   }
 }
 customElements.define("dl-battery-history", BatteryHistory);

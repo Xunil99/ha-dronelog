@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 from .db import FlightStore
-from .models import BatteryPoint, FlightRow, Sample
+from .models import BatteryPoint, BatterySummary, FlightRow, Sample
 
 MAX_POINTS = 600
 UNKNOWN = "unbekannt"
@@ -49,6 +49,11 @@ def _history_point(point: BatteryPoint) -> dict[str, Any]:
     return {"flight_id": point.flight_id, "time": point.start.isoformat(), "charge_end": point.charge_end, "cycles": point.cycles,
             "health_pct": point.health_pct, "cell_deviation_mv": round(point.cell_deviation_max_v * 1000, 1),
             "temp_max_c": point.temp_max_c, "avg_power_w": point.avg_power_w}
+
+
+def battery_known(battery: BatterySummary) -> bool:
+    """Platzhalter (alles 0) aus Logs ohne Zeitreihe zählen nicht als Messwerte."""
+    return any((battery.charge_start, battery.charge_end, battery.full_capacity_mah, battery.peak_power_w, battery.avg_power_w))
 
 
 def _store(hass: HomeAssistant, connection, msg) -> FlightStore | None:
@@ -91,7 +96,7 @@ async def ws_flight(hass, connection, msg, store) -> None:
         return
     position = lambda lat, lon: {"lat": lat, "lon": lon} if lat is not None and lon is not None else None  # noqa: E731
     connection.send_result(msg["id"], {
-        "summary": summary(detail.row), "battery": asdict(detail.battery),
+        "summary": summary(detail.row), "battery": asdict(detail.battery) if battery_known(detail.battery) else None,
         "weather": asdict(detail.weather) if detail.weather else None,
         "start": position(detail.start_lat, detail.start_lon), "end": position(detail.end_lat, detail.end_lon),
         "points": [_point(s) for s in thin(detail.samples)], "source_name": detail.row.source_name,

@@ -87,8 +87,8 @@ describe("flights-view", () => {
 
   it("shows dashes and notes for missing weather and health values", async () => {
     const detail = makeDetail({ weather: null });
-    detail.battery.health_pct = null;
-    detail.battery.cycles = null;
+    detail.battery!.health_pct = null;
+    detail.battery!.cycles = null;
     const el = await mount(makeHass(standardHandler([makeSummary()], 1, detail)));
     expect(text(el)).toContain("Kein Wetter vorhanden");
     expect(text(el)).not.toMatch(/null|NaN/);
@@ -125,5 +125,109 @@ describe("flights-view", () => {
   it("shows an error message when loading fails", async () => {
     const el = await mount(makeHass(() => { throw { code: "unauthorized", message: "nein" }; }));
     expect(text(el)).toContain("Fehler beim Laden");
+  });
+});
+
+
+describe("flights-view robustness", () => {
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  it("shows the flight of the LAST click even when answers arrive out of order", async () => {
+    const flights = [makeSummary({ id: 2, distance_m: 2222 }), makeSummary({ id: 1, distance_m: 1111 }), makeSummary({ id: 3, distance_m: 3333 })];
+    const slow = deferred<unknown>();
+    const fast = deferred<unknown>();
+    const hass = makeHass((m) => {
+      if (m.type === "dronelog/flight") {
+        if (m.flight_id === 2) return { ...makeDetail(), summary: flights[0] };
+        return m.flight_id === 1 ? slow.promise : fast.promise;
+      }
+      return standardHandler(flights)(m);
+    });
+    const el = await mount(hass);
+    const list = el.shadowRoot!.querySelector("dl-flight-list") as HTMLElement;
+    list.dispatchEvent(new CustomEvent("select", { detail: 1 }));
+    list.dispatchEvent(new CustomEvent("select", { detail: 3 }));
+    fast.resolve({ ...makeDetail(), summary: flights[2] });
+    await settle(el as never);
+    slow.resolve({ ...makeDetail(), summary: flights[1] });
+    await settle(el as never);
+    expect(text(el)).toContain("3,3 km");        // Flug 3
+    expect(text(el)).not.toContain("1,1 km");    // Flug 1 darf die Anzeige nicht überschreiben
+  });
+
+  it("a double click on 'Mehr laden' requests the next page only once", async () => {
+    const page = Array.from({ length: 50 }, (_, i) => makeSummary({ id: 100 - i }));
+    const gate = deferred<unknown>();
+    const hass = makeHass((m) => (m.type === "dronelog/flights" && m.offset === 50 ? gate.promise : standardHandler(page, 120)(m)));
+    const el = await mount(hass);
+    const more = [...el.shadowRoot!.querySelectorAll("button")].find((b) => b.textContent!.includes("Mehr laden"))!;
+    more.click();
+    more.click();
+    gate.resolve({ flights: [makeSummary({ id: 1 })], total: 120 });
+    await settle(el as never);
+    expect(hass.callWS.mock.calls.filter((c) => (c[0] as Record<string, unknown>).offset === 50)).toHaveLength(1);
+  });
+
+  it("a page of the old filter is not appended to the new list", async () => {
+    const page = Array.from({ length: 50 }, (_, i) => makeSummary({ id: 100 - i }));
+    const gate = deferred<unknown>();
+    const hass = makeHass((m) => {
+      if (m.type === "dronelog/flights" && m.offset === 50) return gate.promise;
+      if (m.type === "dronelog/flights" && m.drone) return { flights: [makeSummary({ id: 500 })], total: 1 };
+      return standardHandler(page, 120)(m);
+    });
+    const el = await mount(hass);
+    const more = [...el.shadowRoot!.querySelectorAll("button")].find((b) => b.textContent!.includes("Mehr laden"))!;
+    more.click();
+    const select = el.shadowRoot!.querySelector("select[name=drone]") as HTMLSelectElement;
+    select.value = "DRONE0001D003";
+    select.dispatchEvent(new Event("change"));
+    await settle(el as never);
+    gate.resolve({ flights: [makeSummary({ id: 7 }), makeSummary({ id: 8 })], total: 120 });
+    await settle(el as never);
+    const list = el.shadowRoot!.querySelector("dl-flight-list") as unknown as { flights: { id: number }[] };
+    expect(list.flights.map((f) => f.id)).toEqual([500]);
+  });
+
+  it("an error while loading one flight keeps list and filters usable", async () => {
+    const flights = [makeSummary({ id: 2 }), makeSummary({ id: 1 })];
+    const hass = makeHass((m) => {
+      if (m.type === "dronelog/flight" && m.flight_id === 1) throw { code: "not_found", message: "weg" };
+      return standardHandler(flights)(m);
+    });
+    const el = await mount(hass);
+    (el.shadowRoot!.querySelector("dl-flight-list") as HTMLElement).dispatchEvent(new CustomEvent("select", { detail: 1 }));
+    await settle(el as never);
+    expect(el.shadowRoot!.querySelector("select[name=drone]")).not.toBeNull();
+    expect(el.shadowRoot!.querySelector("dl-flight-list")).not.toBeNull();
+    expect(text(el)).toContain("Fehler beim Laden");
+  });
+
+  it("shows a note instead of zero values when the flight has no battery data", async () => {
+    const detail = makeDetail({ battery: null });
+    const el = await mount(makeHass(standardHandler([makeSummary()], 1, detail)));
+    expect(text(el)).toContain("Keine Akkudaten");
+    expect(text(el)).not.toContain("0 % → 0 %");
+  });
+
+  it("uses initialId once: a later filter change selects the newest flight again", async () => {
+    const flights = [makeSummary({ id: 2 }), makeSummary({ id: 1 })];
+    const hass = makeHass(standardHandler(flights));
+    const el = document.createElement("dl-flights-view") as HTMLElement & { hass: unknown; initialId?: number; updateComplete: Promise<boolean> };
+    el.hass = hass;
+    el.initialId = 1;
+    document.body.appendChild(el);
+    await settle(el);
+    expect(hass.callWS).toHaveBeenCalledWith(expect.objectContaining({ type: "dronelog/flight", flight_id: 1 }));
+    hass.callWS.mockClear();
+    const select = el.shadowRoot!.querySelector("select[name=drone]") as HTMLSelectElement;
+    select.value = "DRONE0001D003";
+    select.dispatchEvent(new Event("change"));
+    await settle(el);
+    expect(hass.callWS).toHaveBeenCalledWith(expect.objectContaining({ type: "dronelog/flight", flight_id: 2 }));
   });
 });

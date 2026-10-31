@@ -37,6 +37,7 @@ const de = {
   battery_history: "Akkuverlauf je Akku",
   heatmap: "Heatmap der Flugorte",
   heatmap_hint: "Klick auf die Karte zeigt die Flüge an dieser Stelle",
+  no_battery: "Keine Akkudaten vorhanden",
 } as const;
 
 const en: Record<keyof typeof de, string> = {
@@ -78,6 +79,7 @@ const en: Record<keyof typeof de, string> = {
   battery_history: "Battery history",
   heatmap: "Heatmap of flight locations",
   heatmap_hint: "Click the map to list the flights at that spot",
+  no_battery: "No battery data available",
 };
 
 export type MessageKey = keyof typeof de;

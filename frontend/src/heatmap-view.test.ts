@@ -46,4 +46,27 @@ describe("heatmap-view", () => {
     (el.shadowRoot!.querySelector("li") as HTMLElement).click();
     expect(opened).toBe(7);
   });
+
+  it("does not reload or re-fit the map when Home Assistant sets a new hass object", async () => {
+    const hass = hassFor([{ lat: 47.5, lon: 11, count: 2 }]);
+    const el = await mount(hass);
+    const map = (el as unknown as { map: { fitBounds: (...a: unknown[]) => unknown } }).map;
+    const original = map.fitBounds.bind(map);
+    let fits = 0;
+    map.fitBounds = (...args: unknown[]) => { fits++; return original(...args); };
+    const calls = hass.callWS.mock.calls.length;
+    for (let i = 0; i < 3; i++) {
+      el.hass = { ...hass };
+      await el.updateComplete;
+    }
+    expect(fits).toBe(0);
+    expect(hass.callWS.mock.calls.length).toBe(calls);
+  });
+
+  it("survives a failing cell request", async () => {
+    const hass = hassFor([{ lat: 47.5, lon: 11, count: 2 }]);
+    const el = await mount(hass);
+    hass.callWS.mockRejectedValueOnce({ code: "unknown_error" });
+    await expect(el.handleCellClick(1, 1)).resolves.toBeUndefined();
+  });
 });

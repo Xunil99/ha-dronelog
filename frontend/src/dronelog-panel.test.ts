@@ -17,9 +17,11 @@ function hass() {
 }
 
 type El = HTMLElement & { hass: unknown; narrow: boolean; panel: unknown; updateComplete: Promise<boolean> };
+let current: ReturnType<typeof hass>;
 async function mount(narrow = false) {
   const el = document.createElement("dronelog-panel") as El;
-  el.hass = hass();
+  current = hass();
+  el.hass = current;
   el.narrow = narrow;
   el.panel = { config: { tile_url: "" } };
   document.body.appendChild(el);
@@ -45,9 +47,9 @@ describe("dronelog-panel", () => {
     await el.updateComplete;
     el.shadowRoot!.querySelector("dl-stats-view")!.dispatchEvent(new CustomEvent("open-flight", { detail: 7, bubbles: true, composed: true }));
     await el.updateComplete;
-    const view = el.shadowRoot!.querySelector("dl-flights-view") as HTMLElement & { initialId?: number };
-    expect(view).not.toBeNull();
-    expect(view.initialId).toBe(7);
+    for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 0)); await el.updateComplete; }
+    expect(el.shadowRoot!.querySelector("dl-flights-view")).not.toBeNull();
+    expect(current.callWS).toHaveBeenCalledWith(expect.objectContaining({ type: "dronelog/flight", flight_id: 7 }));
   });
   it("shows the menu button on narrow screens and fires hass-toggle-menu", async () => {
     const el = await mount(true);

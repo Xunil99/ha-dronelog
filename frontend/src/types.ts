@@ -62,7 +62,7 @@ export interface LatLonDTO {
 
 export interface FlightDetailDTO {
   summary: FlightSummary;
-  battery: BatterySummaryDTO;
+  battery: BatterySummaryDTO | null;
   weather: WeatherDTO | null;
   start: LatLonDTO | null;
   end: LatLonDTO | null;
