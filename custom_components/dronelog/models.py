@@ -151,3 +151,20 @@ class Overview:
     batteries: tuple[BatteryInfo, ...]
     pending: int
     errors: int
+
+
+@dataclass(frozen=True)
+class MonthStat:
+    month: str
+    flights: int
+    duration_s: float
+    distance_m: float
+
+
+@dataclass(frozen=True)
+class BatteryListItem:
+    serial: str
+    flights: int
+    first: datetime
+    last: datetime
+    latest: BatteryPoint | None

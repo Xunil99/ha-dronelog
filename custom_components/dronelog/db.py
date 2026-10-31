@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .models import (
     BatteryInfo,
+    BatteryListItem,
     BatteryPoint,
     BatterySummary,
     DroneInfo,
@@ -20,12 +21,15 @@ from .models import (
     FlightDetail,
     FlightRow,
     HeatCell,
+    MonthStat,
     Overview,
     ParsedFlight,
     Sample,
     Totals,
     WeatherSummary,
 )
+
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (sha256 TEXT PRIMARY KEY, status TEXT NOT NULL, message TEXT NOT NULL DEFAULT '', updated TEXT NOT NULL);
@@ -34,6 +38,7 @@ CREATE TABLE IF NOT EXISTS batteries (serial TEXT PRIMARY KEY, first_seen TEXT N
 CREATE TABLE IF NOT EXISTS flights (
   id INTEGER PRIMARY KEY AUTOINCREMENT, sha256 TEXT NOT NULL UNIQUE, start_utc TEXT NOT NULL, duration_s REAL NOT NULL,
   distance_m REAL NOT NULL, max_height_m REAL NOT NULL, max_speed_ms REAL NOT NULL, start_lat REAL, start_lon REAL,
+  end_lat REAL, end_lon REAL,
   drone_serial TEXT NOT NULL, battery_serial TEXT NOT NULL, weather_json TEXT,
   source_name TEXT NOT NULL, battery_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS samples (
@@ -72,6 +77,24 @@ class FlightStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            self._migrate(conn)
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version >= SCHEMA_VERSION:
+            return
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(flights)")}
+        if "end_lat" not in columns:
+            conn.execute("ALTER TABLE flights ADD COLUMN end_lat REAL")
+            conn.execute("ALTER TABLE flights ADD COLUMN end_lon REAL")
+        # Landeposition: letzte Probe mit Position, sonst der Startpunkt (alte Logs ohne Zeitreihe)
+        conn.execute(
+            "UPDATE flights SET "
+            "end_lat = COALESCE((SELECT lat FROM samples s WHERE s.flight_id = flights.id AND s.lat IS NOT NULL ORDER BY s.t DESC LIMIT 1), start_lat), "
+            "end_lon = COALESCE((SELECT lon FROM samples s WHERE s.flight_id = flights.id AND s.lat IS NOT NULL ORDER BY s.t DESC LIMIT 1), start_lon) "
+            "WHERE end_lat IS NULL")
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     @contextmanager
     def _connect(self):
@@ -94,10 +117,10 @@ class FlightStore:
             )
             cursor = conn.execute(
                 "INSERT INTO flights(sha256, start_utc, duration_s, distance_m, max_height_m, max_speed_ms, start_lat, start_lon, "
-                "drone_serial, battery_serial, weather_json, source_name, battery_json) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "end_lat, end_lon, drone_serial, battery_serial, weather_json, source_name, battery_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (flight.sha256, _iso(flight.start), flight.duration_s, flight.distance_m, flight.max_height_m, flight.max_speed_ms,
-                 flight.start_lat, flight.start_lon, flight.drone_serial, flight.battery_serial,
+                 flight.start_lat, flight.start_lon, *self._end_position(flight), flight.drone_serial, flight.battery_serial,
                  json.dumps(asdict(weather)) if weather else None, source_name, json.dumps(asdict(flight.battery))),
             )
             flight_id = cursor.lastrowid
@@ -108,6 +131,11 @@ class FlightStore:
                 [(flight_id, s.t, s.lat, s.lon, s.height, s.speed, s.voltage, s.current, s.charge) for s in flight.samples],
             )
             return flight_id
+
+    @staticmethod
+    def _end_position(flight: ParsedFlight) -> tuple[float | None, float | None]:
+        positioned = [s for s in flight.samples if s.lat is not None and s.lon is not None]
+        return (positioned[-1].lat, positioned[-1].lon) if positioned else (flight.start_lat, flight.start_lon)
 
     def has_flight(self, sha256: str) -> bool:
         with self._connect() as conn:
@@ -189,19 +217,72 @@ class FlightStore:
                                        cell_deviation_max_v=b["cell_deviation_max_v"], temp_max_c=b["temp_max_c"], avg_power_w=b["avg_power_w"]))
         return points
 
-    def heat_cells(self, precision_m: int = 300) -> list[HeatCell]:
+    @staticmethod
+    def _cell(lat: float, lon: float, precision_m: int) -> tuple[int, int]:
         lat_step = precision_m / 111_320
-        cells: dict[tuple[int, int], int] = {}
+        lat_i = round(lat / lat_step)
+        lon_step = lat_step / max(math.cos(math.radians(lat_i * lat_step)), 0.01)  # Zellbreite aus der Zellmitte
+        return lat_i, round(lon / lon_step)
+
+    @staticmethod
+    def _cell_center(cell: tuple[int, int], precision_m: int) -> tuple[float, float]:
+        lat_step = precision_m / 111_320
+        lat = cell[0] * lat_step
+        return lat, cell[1] * lat_step / max(math.cos(math.radians(lat)), 0.01)
+
+    def _positions(self, conn) -> list[tuple[int, float | None, float | None, float | None, float | None]]:
+        return conn.execute("SELECT id, start_lat, start_lon, end_lat, end_lon FROM flights").fetchall()
+
+    def heat_cells(self, precision_m: int = 300) -> list[HeatCell]:
+        counts: dict[tuple[int, int], int] = {}
         with self._connect() as conn:
-            for lat, lon in conn.execute("SELECT start_lat, start_lon FROM flights WHERE start_lat IS NOT NULL AND start_lon IS NOT NULL"):
-                lon_step = lat_step / max(math.cos(math.radians(lat)), 0.01)
-                key = (round(lat / lat_step), round(lon / lon_step))
-                cells[key] = cells.get(key, 0) + 1
-        result = []
-        for (lat_i, lon_i), count in cells.items():
-            lat = lat_i * lat_step
-            result.append(HeatCell(lat=lat, lon=lon_i * lat_step / max(math.cos(math.radians(lat)), 0.01), count=count))
-        return result
+            for _id, s_lat, s_lon, e_lat, e_lon in self._positions(conn):
+                cells = set()
+                if s_lat is not None and s_lon is not None:
+                    cells.add(self._cell(s_lat, s_lon, precision_m))
+                if e_lat is not None and e_lon is not None:
+                    cells.add(self._cell(e_lat, e_lon, precision_m))
+                for cell in cells:  # ein Flug zählt je Zelle höchstens einmal
+                    counts[cell] = counts.get(cell, 0) + 1
+        return [HeatCell(lat=lat, lon=lon, count=count)
+                for cell, count in counts.items() for lat, lon in [self._cell_center(cell, precision_m)]]
+
+    def flights_in_cell(self, lat: float, lon: float, precision_m: int = 300) -> list[FlightRow]:
+        target = self._cell(lat, lon, precision_m)
+        ids = []
+        with self._connect() as conn:
+            for flight_id, s_lat, s_lon, e_lat, e_lon in self._positions(conn):
+                points = [(s_lat, s_lon), (e_lat, e_lon)]
+                if any(a is not None and b is not None and self._cell(a, b, precision_m) == target for a, b in points):
+                    ids.append(flight_id)
+            if not ids:
+                return []
+            marks = ",".join("?" * len(ids))
+            rows = conn.execute(f"SELECT {_FLIGHT_COLUMNS} {_FLIGHT_FROM} WHERE f.id IN ({marks}) ORDER BY f.start_utc DESC", ids).fetchall()
+        return [_row(r) for r in rows]
+
+    def monthly_stats(self, drone: str | None = None) -> list[MonthStat]:
+        clause, args = ("WHERE drone_serial=?", [drone]) if drone else ("", [])
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT substr(start_utc,1,7), COUNT(*), SUM(duration_s), SUM(distance_m) FROM flights {clause} "
+                "GROUP BY 1 ORDER BY 1", args).fetchall()
+        return [MonthStat(month=m, flights=c, duration_s=d or 0.0, distance_m=dist or 0.0) for m, c, d, dist in rows]
+
+    def battery_list(self) -> list[BatteryListItem]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT b.serial, (SELECT COUNT(*) FROM flights f WHERE f.battery_serial=b.serial), b.first_seen, b.last_seen "
+                "FROM batteries b ORDER BY b.serial").fetchall()
+        items = []
+        for serial, count, first, last in rows:
+            history = self.battery_history(serial)
+            items.append(BatteryListItem(serial=serial, flights=count, first=datetime.fromisoformat(first),
+                                         last=datetime.fromisoformat(last), latest=history[-1] if history else None))
+        return items
+
+    def drone_list(self) -> list[DroneInfo]:
+        return list(self.overview().drones)
 
     def overview(self) -> Overview:
         with self._connect() as conn:

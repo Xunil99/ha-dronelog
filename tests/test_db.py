@@ -134,3 +134,53 @@ def test_stored_keychains_survive_flight_deletion(store):
     flight_id = store.add_flight(make_flight(keychains='[["k"]]'), None, "a")
     store.delete_flight(flight_id)
     assert store.stored_keychains("a" * 64) == '[["k"]]'
+
+
+def test_monthly_stats_groups_by_month_and_sums(store):
+    store.add_flight(make_flight(sha="1" * 64, start=later(0), duration=100, distance=1000), None, "a")      # 2026-10
+    store.add_flight(make_flight(sha="2" * 64, start=later(1), duration=200, distance=500), None, "b")       # 2026-10
+    store.add_flight(make_flight(sha="3" * 64, start=later(40), duration=60, distance=50), None, "c")        # 2026-12
+    stats = store.monthly_stats()
+    assert [(m.month, m.flights, m.duration_s, m.distance_m) for m in stats] == [("2026-10", 2, 300, 1500), ("2026-12", 1, 60, 50)]
+
+
+def test_monthly_stats_filters_by_drone(store):
+    store.add_flight(make_flight(sha="1" * 64, drone="D1", start=later(0)), None, "a")
+    store.add_flight(make_flight(sha="2" * 64, drone="D2", start=later(1)), None, "b")
+    assert [m.flights for m in store.monthly_stats(drone="D2")] == [1]
+
+
+def test_battery_list_has_first_last_and_latest_point(store):
+    store.add_flight(make_flight(sha="1" * 64, battery="B1", start=later(1), battery_summary=make_battery(cycles=3)), None, "a")
+    store.add_flight(make_flight(sha="2" * 64, battery="B1", start=later(5), battery_summary=make_battery(cycles=4)), None, "b")
+    store.add_flight(make_flight(sha="3" * 64, battery="B2", start=later(2)), None, "c")
+    items = {b.serial: b for b in store.battery_list()}
+    assert items["B1"].flights == 2
+    assert items["B1"].first == later(1) and items["B1"].last == later(5)
+    assert items["B1"].latest.cycles == 4
+    assert items["B2"].flights == 1
+
+
+def test_drone_list(store):
+    store.add_flight(make_flight(sha="1" * 64, drone="D1"), None, "a")
+    assert [d.serial for d in store.drone_list()] == ["D1"]
+
+
+def test_heat_cells_count_start_and_landing(store):
+    # Start und Landung in verschiedenen Rasterzellen (rund 1,1 km nördlich)
+    far = tuple(Sample(t=float(i * 2), lat=48.75 + i * 0.0025, lon=12.40, height=1, speed=1, voltage=8, current=1, charge=90) for i in range(5))
+    store.add_flight(make_flight(lat=48.75, lon=12.40, samples=far), None, "a")
+    assert sorted(c.count for c in store.heat_cells(300)) == [1, 1]
+
+
+def test_heat_cells_same_cell_counts_flight_once(store):
+    store.add_flight(make_flight(lat=48.75, lon=12.40), None, "a")     # Start und Landung wenige Meter auseinander
+    assert [c.count for c in store.heat_cells(300)] == [1]
+
+
+def test_flights_in_cell_returns_flights_touching_cell(store):
+    store.add_flight(make_flight(sha="1" * 64, lat=48.7500, lon=12.4000), None, "a")
+    store.add_flight(make_flight(sha="2" * 64, lat=48.7501, lon=12.4001, start=later(1)), None, "b")
+    store.add_flight(make_flight(sha="3" * 64, lat=49.5, lon=13.0, start=later(2)), None, "c")
+    found = store.flights_in_cell(48.7500, 12.4000, 300)
+    assert sorted(f.sha256[0] for f in found) == ["1", "2"]
