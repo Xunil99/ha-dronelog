@@ -96,3 +96,17 @@ async def test_returns_none_on_client_error():
 async def test_returns_none_when_no_matching_hours():
     session = FakeSession(FakeResponse(payload=hourly(["2026-10-26T00:00"], [1], [1], [1], [1], [0], [0])))
     assert await fetch_weather(session, 1.0, 2.0, START, END, now=END + timedelta(days=30)) is None
+
+
+class BrokenJsonResponse(FakeResponse):
+    async def json(self):
+        raise ValueError("url=https://api.open-meteo.com/v1/forecast?latitude=48.7512&longitude=12.4034")
+
+
+async def test_failed_json_does_not_leak_coordinates_into_log(caplog):
+    import logging
+
+    with caplog.at_level(logging.DEBUG):
+        result = await fetch_weather(FakeSession(BrokenJsonResponse()), 48.7512, 12.4034, START, END)
+    assert result is None
+    assert "48.75" not in caplog.text and "12.40" not in caplog.text

@@ -106,3 +106,19 @@ async def test_device_name_shows_only_serial_suffix(hass, setup_dronelog):
     assert device is not None
     assert "B39PP1GAA0H413" not in device.name
     assert device.name.endswith("H413")
+
+
+async def test_totals_use_total_state_class_not_total_increasing(hass, setup_dronelog):
+    await add(hass, make_flight())
+    from homeassistant.components.sensor import SensorStateClass
+
+    for key in ("flights_total", "flight_time_total", "distance_total"):
+        assert state(hass, setup_dronelog, "sensor", key).attributes["state_class"] == SensorStateClass.TOTAL
+
+
+async def test_delete_flight_refreshes_sensors_immediately(hass, setup_dronelog):
+    await add(hass, make_flight(sha="1" * 64), make_flight(sha="2" * 64, start=later(1)))
+    assert state(hass, setup_dronelog, "sensor", "flights_total").state == "2"
+    await hass.services.async_call(DOMAIN, "delete_flight", {"flight_id": 1}, blocking=True)
+    await hass.async_block_till_done()
+    assert state(hass, setup_dronelog, "sensor", "flights_total").state == "1"

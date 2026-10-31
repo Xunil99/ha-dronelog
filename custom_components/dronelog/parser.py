@@ -53,7 +53,8 @@ def downsample(samples: Sequence[Sample], step_s: float = 2.0) -> tuple[Sample, 
         if sample.t >= next_t:
             kept.append(sample)
             next_t = sample.t + step_s
-    if kept[-1] is not samples[-1]:
+    # fly_time bleibt nach der Landung stehen: nur anhängen, wenn der Zeitwert wirklich neu ist
+    if samples[-1].t > kept[-1].t:
         kept.append(samples[-1])
     return tuple(kept)
 
@@ -77,8 +78,8 @@ def _battery_summary(frames) -> BatterySummary:
     batt = [f.battery for f in frames]
     charges = [b.charge_level for b in batt if b.charge_level > 0]
     voltages = [b.voltage for b in batt if b.voltage > 0]
-    power = [b.voltage * b.current for b in batt if b.voltage > 0]
-    temps = [b.temperature for b in batt if b.temperature > 0]
+    power = [b.voltage * abs(b.current) for b in batt if b.voltage > 0]
+    temps = [b.temperature for b in batt if b.temperature != 0.0]  # 0.0 = nicht gemessen; Minusgrade bleiben erhalten
     deviations = [b.cell_voltage_deviation for b in batt if 0 <= b.cell_voltage_deviation < MAX_PLAUSIBLE_CELL_DEVIATION_V]
     last = batt[-1] if batt else None
     return BatterySummary(
@@ -86,7 +87,7 @@ def _battery_summary(frames) -> BatterySummary:
         charge_end=charges[-1] if charges else 0,
         min_voltage=min(voltages, default=0.0),
         max_voltage=max(voltages, default=0.0),
-        peak_current_a=max((b.current for b in batt), default=0.0),
+        peak_current_a=max((abs(b.current) for b in batt), default=0.0),
         avg_power_w=sum(power) / len(power) if power else 0.0,
         peak_power_w=max(power, default=0.0),
         temp_min_c=min(temps, default=0.0),
@@ -128,7 +129,8 @@ def flight_from_frames(frames, details, sha256: str, log_version: int, keychains
     )
 
 
-def parse_log(data: bytes, sha256: str, api_key: str | None, stored_keychains: str | None = None) -> ParsedFlight:
+def parse_log(data: bytes, sha256: str, api_key: str | None, stored_keychains: str | None = None,
+              allow_fetch: bool = True) -> ParsedFlight:
     try:
         log = DJILog.from_bytes(data)
     except Exception as err:
@@ -140,11 +142,13 @@ def parse_log(data: bytes, sha256: str, api_key: str | None, stored_keychains: s
         if stored_keychains:
             keychains, keychains_json = deserialize_keychains(stored_keychains), stored_keychains
         elif api_key:
+            if not allow_fetch:
+                raise KeyServiceError("DJI-Schlüsseldienst vorübergehend pausiert.")
             try:
                 keychains = log.fetch_keychains(api_key, cache=False)
             except ApiKeyError as err:
                 raise DecryptError("DJI-API-Key ungültig.") from err
-            except ApiError as err:
+            except (ApiError, ValueError, OSError) as err:
                 raise KeyServiceError("DJI-Schlüsseldienst nicht erreichbar.") from err
             keychains_json = serialize_keychains(keychains)
         else:

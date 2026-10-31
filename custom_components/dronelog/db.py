@@ -34,11 +34,12 @@ CREATE TABLE IF NOT EXISTS batteries (serial TEXT PRIMARY KEY, first_seen TEXT N
 CREATE TABLE IF NOT EXISTS flights (
   id INTEGER PRIMARY KEY AUTOINCREMENT, sha256 TEXT NOT NULL UNIQUE, start_utc TEXT NOT NULL, duration_s REAL NOT NULL,
   distance_m REAL NOT NULL, max_height_m REAL NOT NULL, max_speed_ms REAL NOT NULL, start_lat REAL, start_lon REAL,
-  drone_serial TEXT NOT NULL, battery_serial TEXT NOT NULL, weather_json TEXT, keychains_json TEXT NOT NULL DEFAULT '',
+  drone_serial TEXT NOT NULL, battery_serial TEXT NOT NULL, weather_json TEXT,
   source_name TEXT NOT NULL, battery_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS samples (
   flight_id INTEGER NOT NULL REFERENCES flights(id) ON DELETE CASCADE, t REAL NOT NULL, lat REAL, lon REAL, height REAL,
   speed REAL, voltage REAL, current REAL, charge INTEGER, PRIMARY KEY (flight_id, t));
+CREATE TABLE IF NOT EXISTS keychains (sha256 TEXT PRIMARY KEY, json TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_flights_start ON flights(start_utc);
 CREATE INDEX IF NOT EXISTS idx_flights_battery ON flights(battery_serial);
 """
@@ -93,13 +94,15 @@ class FlightStore:
             )
             cursor = conn.execute(
                 "INSERT INTO flights(sha256, start_utc, duration_s, distance_m, max_height_m, max_speed_ms, start_lat, start_lon, "
-                "drone_serial, battery_serial, weather_json, keychains_json, source_name, battery_json) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "drone_serial, battery_serial, weather_json, source_name, battery_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (flight.sha256, _iso(flight.start), flight.duration_s, flight.distance_m, flight.max_height_m, flight.max_speed_ms,
                  flight.start_lat, flight.start_lon, flight.drone_serial, flight.battery_serial,
-                 json.dumps(asdict(weather)) if weather else None, flight.keychains_json, source_name, json.dumps(asdict(flight.battery))),
+                 json.dumps(asdict(weather)) if weather else None, source_name, json.dumps(asdict(flight.battery))),
             )
             flight_id = cursor.lastrowid
+            if flight.keychains_json:
+                conn.execute("INSERT OR REPLACE INTO keychains(sha256, json) VALUES (?, ?)", (flight.sha256, flight.keychains_json))
             conn.executemany(
                 "INSERT INTO samples VALUES (?,?,?,?,?,?,?,?,?)",
                 [(flight_id, s.t, s.lat, s.lon, s.height, s.speed, s.voltage, s.current, s.charge) for s in flight.samples],
@@ -113,6 +116,10 @@ class FlightStore:
     def delete_flight(self, flight_id: int) -> None:
         with self._lock, self._connect() as conn:
             conn.execute("DELETE FROM flights WHERE id=?", (flight_id,))
+
+    def delete_flight_by_sha(self, sha256: str) -> bool:
+        with self._lock, self._connect() as conn:
+            return conn.execute("DELETE FROM flights WHERE sha256=?", (sha256,)).rowcount > 0
 
     def set_file_status(self, sha256: str, status: FileStatus, message: str = "") -> None:
         with self._lock, self._connect() as conn:
@@ -135,8 +142,8 @@ class FlightStore:
 
     def stored_keychains(self, sha256: str) -> str | None:
         with self._connect() as conn:
-            row = conn.execute("SELECT keychains_json FROM flights WHERE sha256=?", (sha256,)).fetchone()
-        return (row[0] or None) if row else None
+            row = conn.execute("SELECT json FROM keychains WHERE sha256=?", (sha256,)).fetchone()
+        return row[0] if row else None
 
     def list_flights(self, limit: int = 50, offset: int = 0, *, drone: str | None = None, battery: str | None = None,
                      since: datetime | None = None) -> list[FlightRow]:

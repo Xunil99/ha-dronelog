@@ -75,7 +75,7 @@ async def test_saving_options_reprocesses_files_waiting_for_key(hass, tmp_path, 
     entry = await _setup(hass, tmp_path)
     keys = []
 
-    def parse(data, sha, api_key, stored):
+    def parse(data, sha, api_key, stored, allow_fetch=True):
         keys.append(api_key)
         if not api_key:
             from custom_components.dronelog.parser import KeyRequiredError

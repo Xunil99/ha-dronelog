@@ -46,8 +46,9 @@ async def fetch_weather(session: aiohttp.ClientSession, lat: float, lon: float, 
                 return None
             payload = await response.json()
         return _summarise(payload["hourly"], _hour(start), _hour(end))
-    except (TimeoutError, asyncio.TimeoutError, aiohttp.ClientError, KeyError, ValueError, TypeError):
-        _LOGGER.debug("Wetterabfrage fehlgeschlagen", exc_info=True)
+    except (TimeoutError, asyncio.TimeoutError, aiohttp.ClientError, KeyError, ValueError, TypeError) as err:
+        # Bewusst ohne Ausnahmetext/Traceback: die URL (mit Koordinaten) darf nicht ins Log.
+        _LOGGER.debug("Wetterabfrage fehlgeschlagen (%s)", type(err).__name__)
         return None
 
 

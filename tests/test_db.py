@@ -128,3 +128,9 @@ def test_overview_lists_drones_batteries_and_file_counts(store):
     assert batteries["B1"].last.cycles == 7
     assert (overview.pending, overview.errors) == (1, 1)
     assert overview.totals.flights == 3
+
+
+def test_stored_keychains_survive_flight_deletion(store):
+    flight_id = store.add_flight(make_flight(keychains='[["k"]]'), None, "a")
+    store.delete_flight(flight_id)
+    assert store.stored_keychains("a" * 64) == '[["k"]]'

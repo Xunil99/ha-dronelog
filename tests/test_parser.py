@@ -165,3 +165,44 @@ def test_flight_without_gps_fix_has_no_position():
 def test_flight_start_falls_back_to_details_when_frame_time_is_epoch():
     frames = [frame(0.0, with_time=False), frame(1.0, with_time=False)]
     assert flight_from_frames(frames, details(), SHA, 14, "").start == START
+
+
+def test_downsample_never_duplicates_last_time():
+    samples = [s(0.0), s(0.0), s(0.5), s(2.0), s(4.0), s(4.0), s(4.0)]  # fly_time bleibt nach der Landung stehen
+    result = downsample(samples)
+    times = [x.t for x in result]
+    assert times == sorted(set(times))
+
+
+def test_flight_on_ground_only_has_unique_sample_times():
+    frames = [frame(0.0), frame(0.0), frame(0.0)]
+    flight = flight_from_frames(frames, details(), SHA, 14, "")
+    assert [x.t for x in flight.samples] == [0.0]
+
+
+def test_battery_uses_absolute_current():
+    frames = [frame(0.0, cur=-0.5), frame(1.0, cur=-14.2, volt=7.4)]
+    battery = flight_from_frames(frames, details(), SHA, 13, "").battery
+    assert battery.peak_current_a == 14.2
+    assert battery.peak_power_w == pytest.approx(7.4 * 14.2)
+    assert battery.avg_power_w > 0
+
+
+def test_winter_temperatures_are_kept():
+    frames = [frame(0.0, temp=-3.5), frame(1.0, temp=2.0)]
+    battery = flight_from_frames(frames, details(), SHA, 14, "").battery
+    assert (battery.temp_min_c, battery.temp_max_c) == (-3.5, 2.0)
+
+
+def test_parse_log_non_json_dji_answer_is_service_error(monkeypatch):
+    patch_log(monkeypatch, FakeLog(14, [], key_error=ValueError("Expecting value")))
+    with pytest.raises(KeyServiceError):
+        parse_log(b"x", SHA, api_key="k")
+
+
+def test_parse_log_without_network_permission_needs_key_service(monkeypatch):
+    fake = FakeLog(14, [frame(0.0)])
+    patch_log(monkeypatch, fake)
+    with pytest.raises(KeyServiceError):
+        parse_log(b"x", SHA, api_key="k", allow_fetch=False)
+    assert fake.fetch_calls == 0

@@ -43,7 +43,7 @@ def _last(o: Overview):
 def _main_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator) -> list[DroneLogSensor]:
     device = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)}, name="DroneLog", manufacturer="DroneLog")
     uid = lambda key: f"{entry.entry_id}_{key}"  # noqa: E731
-    total = SensorStateClass.TOTAL_INCREASING
+    total = SensorStateClass.TOTAL
     return [
         DroneLogSensor(coordinator, uid("flights_total"), "flights_total", device, lambda o: o.totals.flights, state_class=total),
         DroneLogSensor(coordinator, uid("flight_time_total"), "flight_time_total", device, lambda o: round(o.totals.duration_s / 3600, 2),
@@ -94,7 +94,7 @@ def _battery_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator, batte
                        point(lambda p: p.temp_max_c), device_class=SensorDeviceClass.TEMPERATURE,
                        native_unit_of_measurement=UnitOfTemperature.CELSIUS),
         DroneLogSensor(coordinator, uid("flights"), "battery_flights", device,
-                       lambda o: find(o).flights if find(o) else 0, state_class=SensorStateClass.TOTAL_INCREASING),
+                       lambda o: find(o).flights if find(o) else 0, state_class=SensorStateClass.TOTAL),
     ]
 
 
@@ -108,10 +108,10 @@ def _drone_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator, drone: 
 
     return [
         DroneLogSensor(coordinator, f"drone_{serial}_flights", "drone_flights", device,
-                       lambda o: find(o).flights if find(o) else 0, state_class=SensorStateClass.TOTAL_INCREASING),
+                       lambda o: find(o).flights if find(o) else 0, state_class=SensorStateClass.TOTAL),
         DroneLogSensor(coordinator, f"drone_{serial}_flight_time", "drone_flight_time", device,
                        lambda o: round(find(o).duration_s / 3600, 2) if find(o) else 0, device_class=SensorDeviceClass.DURATION,
-                       native_unit_of_measurement=UnitOfTime.HOURS, state_class=SensorStateClass.TOTAL_INCREASING),
+                       native_unit_of_measurement=UnitOfTime.HOURS, state_class=SensorStateClass.TOTAL),
     ]
 
 
