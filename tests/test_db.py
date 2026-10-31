@@ -111,3 +111,20 @@ def test_delete_flight_removes_samples(store, tmp_path):
 def test_store_survives_reopen(tmp_path):
     FlightStore(tmp_path / "d.db").add_flight(make_flight(), None, "a")
     assert FlightStore(tmp_path / "d.db").totals().flights == 1
+
+
+def test_overview_lists_drones_batteries_and_file_counts(store):
+    store.add_flight(make_flight(sha="1" * 64, start=later(0), battery="B1", drone="D1", duration=100), None, "a")
+    store.add_flight(make_flight(sha="2" * 64, start=later(1), battery="B1", drone="D1", duration=200,
+                                 battery_summary=make_battery(cycles=7)), None, "b")
+    store.add_flight(make_flight(sha="3" * 64, start=later(2), battery="B2", drone="D2"), None, "c")
+    store.set_file_status("x" * 64, FileStatus.PENDING_KEY)
+    store.set_file_status("y" * 64, FileStatus.ERROR)
+    overview = store.overview()
+    drones = {d.serial: d for d in overview.drones}
+    assert (drones["D1"].flights, drones["D1"].duration_s) == (2, 300)
+    batteries = {b.serial: b for b in overview.batteries}
+    assert batteries["B1"].flights == 2
+    assert batteries["B1"].last.cycles == 7
+    assert (overview.pending, overview.errors) == (1, 1)
+    assert overview.totals.flights == 3

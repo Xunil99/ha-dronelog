@@ -44,5 +44,65 @@
         }
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "flights_total": {
+        "name": "Flüge gesamt"
+      },
+      "flight_time_total": {
+        "name": "Flugzeit gesamt"
+      },
+      "distance_total": {
+        "name": "Strecke gesamt"
+      },
+      "last_flight": {
+        "name": "Letzter Flug"
+      },
+      "last_flight_duration": {
+        "name": "Dauer letzter Flug"
+      },
+      "last_flight_distance": {
+        "name": "Strecke letzter Flug"
+      },
+      "last_flight_max_height": {
+        "name": "Maximalhöhe letzter Flug"
+      },
+      "files_pending": {
+        "name": "Dateien in Warteschlange"
+      },
+      "files_error": {
+        "name": "Dateien mit Fehler"
+      },
+      "charge_end_last_flight": {
+        "name": "Ladestand nach letztem Flug"
+      },
+      "health": {
+        "name": "Gesundheit"
+      },
+      "cycles": {
+        "name": "Ladezyklen"
+      },
+      "cell_deviation_last_flight": {
+        "name": "Zellabweichung letzter Flug"
+      },
+      "temperature_max_last_flight": {
+        "name": "Höchsttemperatur letzter Flug"
+      },
+      "battery_flights": {
+        "name": "Flüge"
+      },
+      "drone_flights": {
+        "name": "Flüge"
+      },
+      "drone_flight_time": {
+        "name": "Flugzeit"
+      }
+    },
+    "event": {
+      "new_flight": {
+        "name": "Neuer Flug"
+      }
+    }
   }
 }

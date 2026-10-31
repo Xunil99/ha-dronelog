@@ -127,3 +127,27 @@ class HeatCell:
     lat: float
     lon: float
     count: int
+
+
+@dataclass(frozen=True)
+class DroneInfo:
+    serial: str
+    model: str
+    flights: int
+    duration_s: float
+
+
+@dataclass(frozen=True)
+class BatteryInfo:
+    serial: str
+    flights: int
+    last: BatteryPoint | None
+
+
+@dataclass(frozen=True)
+class Overview:
+    totals: Totals
+    drones: tuple[DroneInfo, ...]
+    batteries: tuple[BatteryInfo, ...]
+    pending: int
+    errors: int

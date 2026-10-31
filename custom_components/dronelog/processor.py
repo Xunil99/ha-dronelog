@@ -21,6 +21,7 @@ from .weather import fetch_weather
 _LOGGER = logging.getLogger(__name__)
 
 EVENT_FLIGHT_ADDED = "dronelog_flight_added"
+EVENT_QUEUE_CHANGED = "dronelog_queue_changed"
 DJI_PAUSE_S = 1.0
 
 
@@ -78,6 +79,7 @@ class Processor:
             finally:
                 self._queued.discard(sha)
                 self._queue.task_done()
+                self._hass.bus.async_fire(EVENT_QUEUE_CHANGED)
 
     async def _process(self, sha: str) -> None:
         job = self._hass.async_add_executor_job

@@ -44,5 +44,65 @@
         }
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "flights_total": {
+        "name": "Flights total"
+      },
+      "flight_time_total": {
+        "name": "Flight time total"
+      },
+      "distance_total": {
+        "name": "Distance total"
+      },
+      "last_flight": {
+        "name": "Last flight"
+      },
+      "last_flight_duration": {
+        "name": "Last flight duration"
+      },
+      "last_flight_distance": {
+        "name": "Last flight distance"
+      },
+      "last_flight_max_height": {
+        "name": "Last flight max height"
+      },
+      "files_pending": {
+        "name": "Files in queue"
+      },
+      "files_error": {
+        "name": "Files with error"
+      },
+      "charge_end_last_flight": {
+        "name": "Charge after last flight"
+      },
+      "health": {
+        "name": "Health"
+      },
+      "cycles": {
+        "name": "Charge cycles"
+      },
+      "cell_deviation_last_flight": {
+        "name": "Cell deviation last flight"
+      },
+      "temperature_max_last_flight": {
+        "name": "Max temperature last flight"
+      },
+      "battery_flights": {
+        "name": "Flights"
+      },
+      "drone_flights": {
+        "name": "Flights"
+      },
+      "drone_flight_time": {
+        "name": "Flight time"
+      }
+    },
+    "event": {
+      "new_flight": {
+        "name": "New flight"
+      }
+    }
   }
 }

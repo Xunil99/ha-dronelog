@@ -12,12 +12,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .models import (
+    BatteryInfo,
     BatteryPoint,
     BatterySummary,
+    DroneInfo,
     FileStatus,
     FlightDetail,
     FlightRow,
     HeatCell,
+    Overview,
     ParsedFlight,
     Sample,
     Totals,
@@ -192,3 +195,22 @@ class FlightStore:
             lat = lat_i * lat_step
             result.append(HeatCell(lat=lat, lon=lon_i * lat_step / max(math.cos(math.radians(lat)), 0.01), count=count))
         return result
+
+    def overview(self) -> Overview:
+        with self._connect() as conn:
+            drones = conn.execute(
+                "SELECT f.drone_serial, COALESCE(d.model, ''), COUNT(*), SUM(f.duration_s) FROM flights f "
+                "LEFT JOIN drones d ON d.serial=f.drone_serial GROUP BY f.drone_serial ORDER BY f.drone_serial").fetchall()
+            batteries = conn.execute("SELECT battery_serial, COUNT(*) FROM flights GROUP BY battery_serial ORDER BY battery_serial").fetchall()
+            counts = dict(conn.execute("SELECT status, COUNT(*) FROM files GROUP BY status").fetchall())
+        battery_infos = []
+        for serial, count in batteries:
+            history = self.battery_history(serial)
+            battery_infos.append(BatteryInfo(serial=serial, flights=count, last=history[-1] if history else None))
+        return Overview(
+            totals=self.totals(),
+            drones=tuple(DroneInfo(serial=s, model=m, flights=c, duration_s=d or 0.0) for s, m, c, d in drones),
+            batteries=tuple(battery_infos),
+            pending=counts.get(FileStatus.PENDING.value, 0) + counts.get(FileStatus.PENDING_KEY.value, 0),
+            errors=counts.get(FileStatus.ERROR.value, 0),
+        )
