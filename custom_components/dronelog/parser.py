@@ -129,6 +129,25 @@ def flight_from_frames(frames, details, sha256: str, log_version: int, keychains
     )
 
 
+def flight_from_details(details, sha256: str, log_version: int) -> ParsedFlight:
+    """Fallback für alte Logs ohne lesbare Datenpunkte: nur die Zusammenfassung aus dem Kopf (keine Zeitreihe)."""
+    if not details.total_time or details.total_time <= 0:
+        raise ParseError("Keine Datenpunkte in der Logdatei.")
+    distance = float(details.total_distance or 0.0)
+    plausible_max = max(details.max_horizontal_speed, 1.0) * details.total_time * 1.2
+    if distance > plausible_max and distance / 1000 <= plausible_max:
+        distance /= 1000  # alte Logs speichern die Strecke teils in tausendfacher Einheit
+    has_position = bool(details.latitude or details.longitude)
+    lat, lon = _position(details.latitude, details.longitude) if has_position else (None, None)
+    start = details.start_time if details.start_time.tzinfo else details.start_time.replace(tzinfo=UTC)
+    return ParsedFlight(
+        sha256=sha256, log_version=log_version, start=start, duration_s=float(details.total_time), distance_m=distance,
+        max_height_m=float(details.max_height), max_speed_ms=float(details.max_horizontal_speed), start_lat=lat, start_lon=lon,
+        drone_model=details.aircraft_name or "", drone_serial=details.aircraft_sn or "", battery_serial=details.battery_sn or "",
+        battery=BatterySummary(0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, None, None), samples=(), keychains_json="",
+    )
+
+
 def parse_log(data: bytes, sha256: str, api_key: str | None, stored_keychains: str | None = None,
               allow_fetch: bool = True) -> ParsedFlight:
     try:
@@ -157,4 +176,6 @@ def parse_log(data: bytes, sha256: str, api_key: str | None, stored_keychains: s
         frames = log.frames(keychains)
     except Exception as err:
         raise ParseError("Logdatei lässt sich nicht lesen (beschädigt oder unvollständig).") from err
+    if not frames:
+        return flight_from_details(log.details, sha256, log.version)
     return flight_from_frames(frames, log.details, sha256, log.version, keychains_json)

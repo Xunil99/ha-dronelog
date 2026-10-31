@@ -39,9 +39,11 @@ def frame(t, lat=48.75, lon=12.4, height=10.0, speed=3.0, cum=0.0, volt=8.0, cur
     )
 
 
-def details(total_distance=99999.0):
+def details(total_distance=99999.0, total_time=0.0, max_speed=0.0, max_height=0.0, lat=0.0, lon=0.0):
     return SimpleNamespace(aircraft_name="DJI Test", aircraft_sn="DRONE1", battery_sn="BAT1",
-                           start_time=START, total_distance=total_distance, product_type=SimpleNamespace(name="X"))
+                           start_time=START, total_distance=total_distance, product_type=SimpleNamespace(name="X"),
+                           total_time=total_time, max_horizontal_speed=max_speed, max_height=max_height,
+                           latitude=lat, longitude=lon)
 
 
 class FakeLog:
@@ -206,3 +208,26 @@ def test_parse_log_without_network_permission_needs_key_service(monkeypatch):
     with pytest.raises(KeyServiceError):
         parse_log(b"x", SHA, api_key="k", allow_fetch=False)
     assert fake.fetch_calls == 0
+
+
+def test_old_log_without_frames_falls_back_to_details_summary(monkeypatch):
+    old = details(total_distance=853.0, total_time=220.1, max_speed=15.5, max_height=22.7, lat=48.75, lon=12.4)
+    patch_log(monkeypatch, FakeLog(8, [], old))
+    flight = parse_log(b"x", SHA, api_key=None)
+    assert (flight.duration_s, flight.max_height_m, flight.max_speed_ms) == (220.1, 22.7, 15.5)
+    assert flight.distance_m == 853.0
+    assert (flight.start_lat, flight.start_lon) == (48.75, 12.4)
+    assert flight.samples == ()
+    assert flight.start == START
+
+
+def test_old_log_details_distance_in_wrong_unit_is_scaled_down(monkeypatch):
+    old = details(total_distance=1_463_312.0, total_time=1052.1, max_speed=13.4, max_height=72.9)
+    patch_log(monkeypatch, FakeLog(8, [], old))
+    assert parse_log(b"x", SHA, api_key=None).distance_m == pytest.approx(1463.312)
+
+
+def test_log_without_frames_and_without_details_summary_is_parse_error(monkeypatch):
+    patch_log(monkeypatch, FakeLog(8, [], details(total_time=0.0)))
+    with pytest.raises(ParseError):
+        parse_log(b"x", SHA, api_key=None)
