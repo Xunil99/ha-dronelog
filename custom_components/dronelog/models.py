@@ -89,6 +89,7 @@ class FlightRow:
     source_name: str
     temperature_c: float | None
     wind_10m_ms: float | None
+    has_position: bool = False
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,8 @@ class FlightDetail:
     row: FlightRow
     start_lat: float | None
     start_lon: float | None
+    end_lat: float | None
+    end_lon: float | None
     battery: BatterySummary
     weather: WeatherSummary | None
     samples: tuple[Sample, ...]

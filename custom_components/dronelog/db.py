@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_flights_battery ON flights(battery_serial);
 
 _FLIGHT_COLUMNS = (
     "f.id, f.sha256, f.start_utc, f.duration_s, f.distance_m, f.max_height_m, f.max_speed_ms, f.drone_serial, "
-    "COALESCE(d.model, ''), f.battery_serial, f.source_name, f.weather_json"
+    "COALESCE(d.model, ''), f.battery_serial, f.source_name, f.weather_json, (f.start_lat IS NOT NULL)"
 )
 _FLIGHT_FROM = "FROM flights f LEFT JOIN drones d ON d.serial = f.drone_serial"
 
@@ -66,7 +66,7 @@ def _row(values) -> FlightRow:
         id=values[0], sha256=values[1], start=datetime.fromisoformat(values[2]), duration_s=values[3], distance_m=values[4],
         max_height_m=values[5], max_speed_ms=values[6], drone_serial=values[7], drone_model=values[8], battery_serial=values[9],
         source_name=values[10], temperature_c=weather["temperature_c"] if weather else None,
-        wind_10m_ms=weather["wind_10m_ms"] if weather else None,
+        wind_10m_ms=weather["wind_10m_ms"] if weather else None, has_position=bool(values[12]),
     )
 
 
@@ -188,17 +188,29 @@ class FlightStore:
                                 [*args, limit, offset]).fetchall()
         return [_row(r) for r in rows]
 
+    def count_flights(self, *, drone: str | None = None, battery: str | None = None, since: datetime | None = None) -> int:
+        where, args = [], []
+        if drone:
+            where.append("drone_serial=?"); args.append(drone)
+        if battery:
+            where.append("battery_serial=?"); args.append(battery)
+        if since:
+            where.append("start_utc>=?"); args.append(_iso(since))
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        with self._connect() as conn:
+            return conn.execute(f"SELECT COUNT(*) FROM flights {clause}", args).fetchone()[0]
+
     def get_flight(self, flight_id: int) -> FlightDetail | None:
         with self._connect() as conn:
-            row = conn.execute(f"SELECT {_FLIGHT_COLUMNS}, f.start_lat, f.start_lon, f.battery_json {_FLIGHT_FROM} WHERE f.id=?",
+            row = conn.execute(f"SELECT {_FLIGHT_COLUMNS}, f.start_lat, f.start_lon, f.battery_json, f.end_lat, f.end_lon {_FLIGHT_FROM} WHERE f.id=?",
                                (flight_id,)).fetchone()
             if not row:
                 return None
             samples = conn.execute("SELECT t, lat, lon, height, speed, voltage, current, charge FROM samples WHERE flight_id=? ORDER BY t",
                                    (flight_id,)).fetchall()
         weather = WeatherSummary(**json.loads(row[11])) if row[11] else None
-        return FlightDetail(row=_row(row[:12]), start_lat=row[12], start_lon=row[13], battery=BatterySummary(**json.loads(row[14])),
-                            weather=weather, samples=tuple(Sample(*s) for s in samples))
+        return FlightDetail(row=_row(row[:13]), start_lat=row[13], start_lon=row[14], end_lat=row[16], end_lon=row[17],
+                            battery=BatterySummary(**json.loads(row[15])), weather=weather, samples=tuple(Sample(*s) for s in samples))
 
     def totals(self) -> Totals:
         with self._connect() as conn:

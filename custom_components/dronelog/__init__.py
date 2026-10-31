@@ -19,6 +19,7 @@ from .db import FlightStore
 from .models import FileStatus
 from .processor import Options, Processor
 from .storage import RawLogStore
+from .websocket_api import async_register_commands
 from .view import DroneLogPingView, DroneLogUploadView
 
 PLATFORMS = ["sensor", "event"]
@@ -41,6 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     if not hass.data.get(_VIEWS_KEY):
+        async_register_commands(hass)
         hass.http.register_view(DroneLogUploadView())
         hass.http.register_view(DroneLogPingView())
         hass.data[_VIEWS_KEY] = True
