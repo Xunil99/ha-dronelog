@@ -1,18 +1,11 @@
 import uPlot from "uplot";
 import uplotCss from "uplot/dist/uPlot.min.css?inline";
+import { canvasSupported } from "./canvas";
 import { LitElement, css, html, unsafeCSS } from "lit";
 import { buildChartData, chartColors } from "./chart-data";
 import { t } from "./i18n";
 import { baseStyles } from "./styles";
 import type { Point } from "./types";
-
-function canvasSupported(): boolean {
-  try {
-    return document.createElement("canvas").getContext("2d") !== null;
-  } catch {
-    return false;
-  }
-}
 
 export class FlightCharts extends LitElement {
   static properties = {

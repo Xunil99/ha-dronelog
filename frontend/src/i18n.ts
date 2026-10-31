@@ -31,6 +31,12 @@ const de = {
   loading: "Lädt …",
   error: "Fehler beim Laden",
   select_flight: "Flug auswählen",
+  metric_flights: "Flüge",
+  metric_hours: "Flugzeit",
+  drones: "Drohnen",
+  battery_history: "Akkuverlauf je Akku",
+  heatmap: "Heatmap der Flugorte",
+  heatmap_hint: "Klick auf die Karte zeigt die Flüge an dieser Stelle",
 } as const;
 
 const en: Record<keyof typeof de, string> = {
@@ -66,6 +72,12 @@ const en: Record<keyof typeof de, string> = {
   loading: "Loading …",
   error: "Failed to load",
   select_flight: "Select a flight",
+  metric_flights: "Flights",
+  metric_hours: "Flight time",
+  drones: "Drones",
+  battery_history: "Battery history",
+  heatmap: "Heatmap of flight locations",
+  heatmap_hint: "Click the map to list the flights at that spot",
 };
 
 export type MessageKey = keyof typeof de;

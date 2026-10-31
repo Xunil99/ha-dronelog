@@ -1,10 +1,11 @@
 import { LitElement, css, html } from "lit";
 import "./flights-view";
+import "./stats-view";
 import { t } from "./i18n";
 import { baseStyles } from "./styles";
 import type { HassLike } from "./types";
 
-type Tab = "flights";
+type Tab = "flights" | "stats";
 
 export class DroneLogPanel extends LitElement {
   static properties = {
@@ -12,11 +13,13 @@ export class DroneLogPanel extends LitElement {
     narrow: { type: Boolean },
     panel: { attribute: false },
     tab: { state: true },
+    jumpId: { state: true },
   };
   declare hass: HassLike;
   declare narrow: boolean;
   declare panel: { config?: { tile_url?: string } } | undefined;
   declare tab: Tab;
+  declare jumpId: number | undefined;
 
   constructor() {
     super();
@@ -38,6 +41,16 @@ export class DroneLogPanel extends LitElement {
     `,
   ];
 
+  private show(tab: Tab) {
+    this.jumpId = undefined;
+    this.tab = tab;
+  }
+
+  private onOpenFlight(event: Event) {
+    this.jumpId = (event as CustomEvent<number>).detail;
+    this.tab = "flights";
+  }
+
   private toggleMenu() {
     this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
   }
@@ -50,10 +63,13 @@ export class DroneLogPanel extends LitElement {
         <h1>${t("title", lang)}</h1>
       </header>
       <nav role="tablist">
-        <button role="tab" aria-selected=${this.tab === "flights"} @click=${() => (this.tab = "flights")}>${t("tab_flights", lang)}</button>
+        <button role="tab" aria-selected=${this.tab === "flights"} @click=${() => this.show("flights")}>${t("tab_flights", lang)}</button>
+        <button role="tab" aria-selected=${this.tab === "stats"} @click=${() => this.show("stats")}>${t("tab_stats", lang)}</button>
       </nav>
-      <main>
-        <dl-flights-view .hass=${this.hass} .narrow=${this.narrow} .tileUrl=${this.panel?.config?.tile_url ?? ""}></dl-flights-view>
+      <main @open-flight=${this.onOpenFlight}>
+        ${this.tab === "flights"
+          ? html`<dl-flights-view .hass=${this.hass} .narrow=${this.narrow} .tileUrl=${this.panel?.config?.tile_url ?? ""} .initialId=${this.jumpId}></dl-flights-view>`
+          : html`<dl-stats-view .hass=${this.hass} .tileUrl=${this.panel?.config?.tile_url ?? ""}></dl-stats-view>`}
       </main>
     `;
   }
