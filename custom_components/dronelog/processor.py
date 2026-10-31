@@ -64,6 +64,27 @@ class Processor:
             await self.enqueue(sha)
         return len(shas)
 
+    async def enqueue_unprocessed_raw(self) -> int:
+        """Reiht alle abgelegten Rohdateien ein, die weder einen Flug noch einen Fehlerstatus haben (Nachimport)."""
+        job = self._hass.async_add_executor_job
+        shas = await job(self._unprocessed_raw)
+        for sha in shas:
+            await self.enqueue(sha)
+        return len(shas)
+
+    def _unprocessed_raw(self) -> list[str]:
+        if not self._raw_dir.exists():
+            return []
+        result = []
+        for path in sorted(self._raw_dir.glob("*.txt")):
+            sha = path.stem
+            if len(sha) != 64 or self._store.has_flight(sha):
+                continue
+            status = self._store.file_status(sha)
+            if status is None or status[0] in (FileStatus.PENDING, FileStatus.PENDING_KEY):
+                result.append(sha)
+        return result
+
     async def run_until_idle(self) -> None:
         await self._queue.join()
         if self._worker:

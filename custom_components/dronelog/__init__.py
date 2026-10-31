@@ -43,6 +43,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "reprocess", _handle_reprocess, schema=vol.Schema({vol.Optional("sha256"): str}))
         hass.services.async_register(DOMAIN, "delete_flight", _handle_delete_flight, schema=vol.Schema({vol.Required("flight_id"): int}))
     await processor.reprocess()
+    await processor.enqueue_unprocessed_raw()
     return True
 
 

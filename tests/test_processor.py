@@ -214,3 +214,22 @@ async def test_upload_view_triggers_processing(hass_client_no_auth, setup_dronel
     assert resp.status == 200
     await hass.data[DOMAIN]["processor"].run_until_idle()
     assert hass.data[DOMAIN]["db"].has_flight(sha)
+
+
+async def test_startup_enqueues_raw_files_without_database_entry(env):
+    for sha in ("1" * 64, "2" * 64, "3" * 64):
+        write_raw(env.raw, sha)
+    env.store.add_flight(make_flight(sha="1" * 64), None, "bereits")
+    env.store.set_file_status("3" * 64, FileStatus.ERROR, "alt")
+    assert await env.processor.enqueue_unprocessed_raw() == 1   # nur "2": "1" ist fertig, "3" bleibt bewusst im Fehlerstatus
+    await env.processor.run_until_idle()
+    assert env.store.has_flight("2" * 64)
+    assert not env.store.has_flight("3" * 64)
+    assert len(env.parse_calls) == 1
+
+
+async def test_startup_ignores_non_log_files_in_raw_dir(env):
+    (env.raw / "notiz.txt").write_text("keine Logdatei")
+    (env.raw / ".upload-abc.tmp").write_bytes(b"x")
+    write_raw(env.raw, "2" * 64)
+    assert await env.processor.enqueue_unprocessed_raw() == 1
