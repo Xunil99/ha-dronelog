@@ -7,7 +7,7 @@ import json
 import math
 import re
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pydjirecord import DJILog
 from pydjirecord.error import ApiError, ApiKeyError
@@ -70,13 +70,27 @@ def _position(lat: float, lon: float) -> tuple[float | None, float | None]:
     return lat, lon
 
 
+MAX_CLOCK_DEVIATION = timedelta(days=1)
+
+
+def _aware(moment: datetime) -> datetime:
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
 def _start_time(frames, details) -> datetime:
+    header = _aware(details.start_time)
     for frame in frames:
         moment = frame.custom.date_time
         if moment and moment.year >= EPOCH_YEAR_LIMIT:
-            return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
-    start = details.start_time
-    return start if start.tzinfo else start.replace(tzinfo=UTC)
+            moment = _aware(moment)
+            # Falsch gestellte Drohnenuhr (z. B. Jahr 2040): dann gilt die Zeit aus dem Dateikopf.
+            return moment if abs(moment - header) <= MAX_CLOCK_DEVIATION else header
+    return header
+
+
+def _clean_serial(value: str | None) -> str:
+    cleaned = "".join(ch for ch in (value or "") if ch.isascii() and (ch.isalnum() or ch == "-"))
+    return cleaned if len(cleaned) >= 4 else "unbekannt"
 
 
 def _battery_summary(frames) -> BatterySummary:
@@ -114,7 +128,7 @@ def flight_from_frames(frames, details, sha256: str, log_version: int, keychains
                               voltage=frame.battery.voltage, current=frame.battery.current, charge=frame.battery.charge_level))
     positions = [(s.lat, s.lon) for s in samples if s.lat is not None]
     first_lat, first_lon = positions[0] if positions else (None, None)
-    battery_sn = details.battery_sn or next((f.recover.battery_sn for f in frames if f.recover.battery_sn), "")
+    battery_sn = _clean_serial(details.battery_sn or next((f.recover.battery_sn for f in frames if f.recover.battery_sn), ""))
     return ParsedFlight(
         sha256=sha256,
         log_version=log_version,
@@ -126,7 +140,7 @@ def flight_from_frames(frames, details, sha256: str, log_version: int, keychains
         start_lat=first_lat,
         start_lon=first_lon,
         drone_model=details.aircraft_name or getattr(details.product_type, "name", ""),
-        drone_serial=details.aircraft_sn or "",
+        drone_serial=_clean_serial(details.aircraft_sn),
         battery_serial=battery_sn,
         battery=_battery_summary(frames),
         samples=downsample(samples),
@@ -148,7 +162,8 @@ def flight_from_details(details, sha256: str, log_version: int) -> ParsedFlight:
     return ParsedFlight(
         sha256=sha256, log_version=log_version, start=start, duration_s=float(details.total_time), distance_m=distance,
         max_height_m=float(details.max_height), max_speed_ms=float(details.max_horizontal_speed), start_lat=lat, start_lon=lon,
-        drone_model=details.aircraft_name or "", drone_serial=details.aircraft_sn or "", battery_serial=details.battery_sn or "",
+        drone_model=details.aircraft_name or "", drone_serial=_clean_serial(details.aircraft_sn),
+        battery_serial=_clean_serial(details.battery_sn),
         battery=BatterySummary(0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, None, None), samples=(), keychains_json="",
     )
 

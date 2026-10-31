@@ -257,3 +257,35 @@ def test_service_error_message_names_the_reason_without_secrets(monkeypatch):
         parse_log(b"x", SHA, api_key="GEHEIMERKEY")
     assert "ConnectTimeout" in str(info.value)
     assert "GEHEIMERKEY" not in str(info.value)
+
+
+def test_frame_time_far_from_header_time_falls_back_to_header():
+    far = datetime(2040, 12, 25, 11, 3, 6, tzinfo=UTC)  # falsche Drohnenuhr
+    frames = [frame(0.0), frame(1.0)]
+    for f in frames:
+        f.custom.date_time = far
+    assert flight_from_frames(frames, details(), SHA, 14, "").start == START
+
+
+def test_frame_time_close_to_header_time_is_kept():
+    close = datetime(2026, 10, 27, 13, 11, 40, tzinfo=UTC)
+    frames = [frame(0.0), frame(1.0)]
+    for f in frames:
+        f.custom.date_time = close
+    assert flight_from_frames(frames, details(), SHA, 14, "").start == close
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("B39PP1GAA0H413", "B39PP1GAA0H413"),
+    ("\x05\x02\x01\x05", "unbekannt"),
+    ("", "unbekannt"),
+    ("AB", "unbekannt"),
+    (" 6171153826167\x00", "6171153826167"),
+])
+def test_serials_are_sanitized(raw, expected):
+    d = details()
+    d.battery_sn = raw
+    frames = [frame(0.0), frame(1.0)]
+    for f in frames:
+        f.recover.battery_sn = ""
+    assert flight_from_frames(frames, d, SHA, 14, "").battery_serial == expected
