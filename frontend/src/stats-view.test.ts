@@ -28,6 +28,7 @@ async function mount(hass: ReturnType<typeof hassFor>) {
   for (let i = 0; i < 6; i++) { await new Promise((r) => setTimeout(r, 0)); await el.updateComplete; }
   return el;
 }
+const tick = async (el: HTMLElement & { updateComplete: Promise<boolean> }) => { for (let i = 0; i < 5; i++) { await new Promise((r) => setTimeout(r, 0)); await el.updateComplete; } };
 const text = (el: HTMLElement) => (el.shadowRoot?.textContent ?? "").replace(/\s+/g, " ");
 
 beforeEach(() => { document.body.innerHTML = ""; });
@@ -51,14 +52,17 @@ describe("stats-view", () => {
     await el.updateComplete;
     expect(el.shadowRoot!.querySelector(".bar-label")!.textContent).toMatch(/h|min/);
   });
-  it("requests statistics for the selected drone", async () => {
+  it("requests statistics for the drone and battery given by the analysis view and reloads when they change", async () => {
     const hass = hassFor();
     const el = await mount(hass);
-    const select = el.shadowRoot!.querySelector("select[name=drone]") as HTMLSelectElement;
-    select.value = "D1";
-    select.dispatchEvent(new Event("change"));
-    await new Promise((r) => setTimeout(r, 0));
+    expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/stats" });
+    hass.callWS.mockClear();
+    (el as unknown as { drone: string }).drone = "D1";
+    await tick(el);
     expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/stats", drone: "D1" });
+    (el as unknown as { battery: string }).battery = "BN";
+    await tick(el);
+    expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/stats", drone: "D1", battery: "BN" });
   });
   it("shows an empty message without flights", async () => {
     const el = await mount(hassFor({ totals: { flights: 0, duration_s: 0, distance_m: 0 }, months: [], drones: [] }));
@@ -66,43 +70,17 @@ describe("stats-view", () => {
   });
 
 
-  const batteryOptions = (el: HTMLElement) => [...el.shadowRoot!.querySelectorAll("select[name=battery] option")].map((o) => (o as HTMLOptionElement).value).filter(Boolean);
-  const choose = async (el: HTMLElement, name: string, value: string) => {
-    const select = el.shadowRoot!.querySelector(`select[name=${name}]`) as HTMLSelectElement;
-    select.value = value;
-    select.dispatchEvent(new Event("change"));
-    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-  };
-
-  it("battery filter is disabled and empty until a drone is chosen", async () => {
-    const el = await mount(hassFor(twoDrones));
-    expect((el.shadowRoot!.querySelector("select[name=battery]") as HTMLSelectElement).disabled).toBe(true);
-    expect(batteryOptions(el)).toEqual([]);
-  });
-
-  it("lists only the batteries of the chosen drone", async () => {
-    const el = await mount(hassFor(twoDrones));
-    await choose(el, "drone", "D1");
-    expect(batteryOptions(el)).toEqual(["BN", "BB"]);
-  });
-
-  it("requests statistics for drone and battery, and resets the battery when the drone changes", async () => {
-    const hass = hassFor(twoDrones);
-    const el = await mount(hass);
-    await choose(el, "drone", "D1");
-    await choose(el, "battery", "BN");
-    expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/stats", drone: "D1", battery: "BN" });
-    hass.callWS.mockClear();
-    await choose(el, "drone", "D2");
-    expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/stats", drone: "D2" });
-  });
-
   it("passes the filters to the battery history and the heatmap", async () => {
     const el = await mount(hassFor(twoDrones));
-    await choose(el, "drone", "D1");
-    await choose(el, "battery", "BN");
+    (el as unknown as { drone: string; battery: string }).drone = "D1";
+    (el as unknown as { battery: string }).battery = "BN";
+    await tick(el);
     const history = el.shadowRoot!.querySelector("dl-battery-history") as HTMLElement & { drone?: string; battery?: string };
     const heat = el.shadowRoot!.querySelector("dl-heatmap-view") as HTMLElement & { drone?: string; battery?: string };
     expect([history.drone, history.battery, heat.drone, heat.battery]).toEqual(["D1", "BN", "D1", "BN"]);
+  });
+  it("has no filter selects of its own", async () => {
+    const el = await mount(hassFor(twoDrones));
+    expect(el.shadowRoot!.querySelector("select")).toBeNull();
   });
 });

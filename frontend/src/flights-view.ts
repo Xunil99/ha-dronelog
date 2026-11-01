@@ -222,6 +222,7 @@ export class FlightsView extends LitElement {
     const detail = this.detailError
       ? html`<p class="muted">${t("error", l)}</p>`
       : html`<dl-flight-detail
+      .hass=${this.hass}
       .detail=${this.detail}
       .lang=${l}
       .timeZone=${this.timeZone}

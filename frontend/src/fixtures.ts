@@ -1,4 +1,4 @@
-import type { AnalysisDTO, BatteryDTO, FlightDetailDTO, FlightExtrasDTO, FlightSummary, Point } from "./types";
+import type { AnalysisDTO, BatteryDTO, BatteryReportDTO, ReportFlightDTO, FlightDetailDTO, FlightExtrasDTO, FlightSummary, Point } from "./types";
 
 export function makeSummary(overrides: Partial<FlightSummary> = {}): FlightSummary {
   return {
@@ -57,6 +57,32 @@ export function makeAnalysis(overrides: Partial<AnalysisDTO> = {}): AnalysisDTO 
     hover_wind: { tilt_deg: 3, bearing_deg: 45, seconds: 20, class: "moderate" },
     cell_level: "ok",
     mode_segments: [{ category: "automatic", title: "Start/Landung", start: 0, end: 10 }, { category: "normal", title: "Normal", start: 10, end: 118 }],
+    ...overrides,
+  };
+}
+
+export function makeReportFlight(overrides: Partial<ReportFlightDTO> = {}): ReportFlightDTO {
+  return { flight_id: 1, start: "2026-09-01T10:00:00+00:00", duration_s: 330, charge_start: 99, charge_end: 79, peak_current_a: 14.1, temp_max_c: 33,
+    cell_deviation_mv: 3, cycles: 10, health_pct: 90, resistance_mohm: 180, ...overrides };
+}
+
+export function makeReport(overrides: Partial<BatteryReportDTO> = {}): BatteryReportDTO {
+  return {
+    serial: "BATTERY00H413", drone_models: ["DJI Test"], flights: 3, first_use: "2026-09-01T10:00:00+00:00", last_use: "2026-10-27T13:11:11+00:00",
+    total_duration_s: 990, total_distance_m: 4380, cycles_first: 10, cycles_latest: 12, health_first: 90, health_latest: 86, full_capacity_mah: 2800,
+    peak_current_a: 14.1, peak_power_w: 104, avg_power_w: 40, min_voltage: 7.3, max_voltage: 8.2, temp_min_c: 21, temp_max_c: 33,
+    cell_deviation_max_mv: 26, flights_above_cell_warning: 1, voltage_warnings: 2, resistance_median_mohm: 183.4, avg_charge_used_pct: 20,
+    history: [
+      makeReportFlight({ flight_id: 1, start: "2026-09-01T10:00:00+00:00", cycles: 10, health_pct: 90, cell_deviation_mv: 3, resistance_mohm: null }),
+      makeReportFlight({ flight_id: 2, start: "2026-10-01T10:00:00+00:00", cycles: 11, health_pct: 88, cell_deviation_mv: 26, resistance_mohm: null }),
+      makeReportFlight({ flight_id: 3, start: "2026-10-27T13:11:11+00:00", cycles: 12, health_pct: 86, cell_deviation_mv: 4, resistance_mohm: 183 }),
+    ],
+    cycles_added: 2, health_loss_pct: 4,
+    assessment: {
+      level: "watch", headline_code: "watch", headline: "Akku beobachten",
+      state_of_health: { code: "soh_trend_cycles", text: "", params: { health: 86, first: 90, loss: 4, cycles: 2 } },
+      points: [{ code: "health_watch", text: "", params: { health: 86 } }, { code: "cell_watch", text: "", params: { flights: 1 } }, { code: "voltage_warnings", text: "", params: { count: 2 } }],
+    },
     ...overrides,
   };
 }
