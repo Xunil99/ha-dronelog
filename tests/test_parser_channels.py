@@ -35,8 +35,8 @@ def flight(frames):
 
 
 def test_samples_carry_distance_from_start_and_signal_channels():
-    f = flight([fr(0, lat=47.0, dl=90, ul=80), fr(1, lat=47.001, dl=40, ul=70, video=True, mode=FlightMode.GPS_ATTI),
-                fr(2, lat=0.0, lon=0.0)])
+    f = flight([fr(0, lat=47.0, dl=90, ul=80), fr(2, lat=47.001, dl=40, ul=70, video=True, mode=FlightMode.GPS_ATTI),
+                fr(4, lat=0.0, lon=0.0)])
     a, b, c = f.samples
     assert a.dist == 0.0 and (a.dl, a.ul, a.rec) == (90, 80, False) and a.mode is None
     assert b.dist == pytest.approx(haversine_distance(47.0, 11.0, 47.001, 11.0), abs=1e-6)
@@ -80,3 +80,9 @@ def test_header_fallback_has_no_extras():
     f = flight_from_details(details(total_distance=500.0, total_time=60.0, max_speed=5.0, max_height=20.0, lat=47.0, lon=11.0),
                             SHA, 6)
     assert f.extras is None and f.battery.internal_resistance_mohm is None
+
+
+def test_out_of_range_coordinates_are_no_position():
+    f = flight([fr(0, lat=95.0, lon=11.0), fr(3, lat=47.0, lon=200.0), fr(6, lat=47.0, lon=11.0)])
+    assert [s.lat for s in f.samples] == [None, None, 47.0]
+    assert f.start_lat == 47.0
