@@ -14,7 +14,7 @@ from pathlib import Path
 from .battery_report import BatteryReportData, FlightInput, build_battery_report
 from .flightbook import FlightbookEntry, entry_from_header
 from .grid import heat_cell, heat_cell_center
-from .logbook import Logbook, build_logbook
+from .logbook import MAX_DISTANCE_M, MAX_DURATION_S, Logbook, build_logbook, plausible
 from .maintenance import MaintenancePlan
 from .notes import FlightNote
 from .models import (
@@ -516,14 +516,23 @@ class FlightStore:
                                          last=datetime.fromisoformat(last), latest=history[-1] if history else None, drones=drones))
         return items
 
+    def _drone_stats(self) -> tuple[DroneInfo, ...]:
+        """Je Drohne: Flüge, Flugzeit, Strecke, verschiedene Akkus und letzter Flug (Kopfwerte mit Plausibilitätsprüfung wie in der iOS-App)."""
+        groups: dict[str, list[FlightHeader]] = {}
+        for h in self.flight_headers():
+            groups.setdefault(h.drone_serial, []).append(h)
+        return tuple(DroneInfo(
+            serial=serial, model=next((h.drone_model for h in group if h.drone_model), ""), flights=len(group),
+            duration_s=sum(plausible(h.duration_s, MAX_DURATION_S) for h in group),
+            distance_m=sum(plausible(h.distance_m, MAX_DISTANCE_M) for h in group),
+            batteries=len({h.battery_serial for h in group}), last_flight=max(h.start for h in group))
+            for serial, group in sorted(groups.items()))
+
     def drone_list(self) -> list[DroneInfo]:
         return list(self.overview().drones)
 
     def overview(self) -> Overview:
         with self._connect() as conn:
-            drones = conn.execute(
-                "SELECT f.drone_serial, COALESCE(d.model, ''), COUNT(*), SUM(f.duration_s) FROM flights f "
-                "LEFT JOIN drones d ON d.serial=f.drone_serial GROUP BY f.drone_serial ORDER BY f.drone_serial").fetchall()
             batteries = conn.execute("SELECT battery_serial, COUNT(*) FROM flights GROUP BY battery_serial ORDER BY battery_serial").fetchall()
             counts = dict(conn.execute("SELECT status, COUNT(*) FROM files GROUP BY status").fetchall())
         battery_infos = []
@@ -532,7 +541,7 @@ class FlightStore:
             battery_infos.append(BatteryInfo(serial=serial, flights=count, last=history[-1] if history else None))
         return Overview(
             totals=self.totals(),
-            drones=tuple(DroneInfo(serial=s, model=m, flights=c, duration_s=d or 0.0) for s, m, c, d in drones),
+            drones=self._drone_stats(),
             batteries=tuple(battery_infos),
             pending=counts.get(FileStatus.PENDING.value, 0) + counts.get(FileStatus.PENDING_KEY.value, 0),
             errors=counts.get(FileStatus.ERROR.value, 0),

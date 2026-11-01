@@ -193,6 +193,9 @@ class DroneInfo:
     model: str
     flights: int
     duration_s: float
+    distance_m: float = 0.0
+    batteries: int = 0
+    last_flight: datetime | None = None
 
 
 @dataclass(frozen=True)

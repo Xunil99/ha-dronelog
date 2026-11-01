@@ -132,7 +132,9 @@ async def test_cell_flights(hass, hass_ws_client, setup_dronelog):
 
 
 COMMANDS = [("flights", {}), ("flight", {"flight_id": 1}), ("stats", {}), ("batteries", {}), ("heatmap", {}),
-            ("cell_flights", {"lat": 48.75, "lon": 12.4})]
+            ("cell_flights", {"lat": 48.75, "lon": 12.4}), ("battery_report", {"battery_serial": "BAT1"}), ("logbook", {}), ("flightbook", {}),
+            ("note_get", {"flight_id": 1}), ("note_set", {"flight_id": 1, "text": "x"}), ("place_name_set", {"key": "1,2", "name": "x"}),
+            ("maintenance_get", {}), ("maintenance_set", {"drone": "D1", "interval_flights": 3}), ("maintenance_serviced", {"drone": "D1"})]
 
 
 @pytest.mark.parametrize(("command", "data"), COMMANDS)
@@ -270,3 +272,15 @@ async def test_flight_without_samples_has_empty_analysis(hass, hass_ws_client, s
     await add(hass, make_flight(samples=()))
     result = (await call(await hass_ws_client(hass), "flight", flight_id=1))["result"]
     assert result["analysis"]["phases"] == {} and result["analysis"]["cell_level"] is None
+
+
+async def test_stats_drones_have_distance_batteries_and_last_flight(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight(sha="1" * 64, start=later(0), duration=100, distance=1000, drone="D1", battery="B1"),
+              make_flight(sha="2" * 64, start=later(2), duration=60, distance=500, drone="D1", battery="B2"),
+              make_flight(sha="3" * 64, start=later(1), duration=30, distance=99_000_000, drone="D1", battery="B2"),   # unplausible: zählt 0
+              make_flight(sha="4" * 64, start=later(3), duration=10, distance=5, drone="D2", battery="B1"))
+    drones = {d["serial"]: d for d in (await call(await hass_ws_client(hass), "stats"))["result"]["drones"]}
+    assert drones["D1"]["flights"] == 3 and drones["D1"]["duration_s"] == 190 and drones["D1"]["distance_m"] == 1500
+    assert drones["D1"]["batteries"] == 2 and drones["D2"]["batteries"] == 1
+    assert drones["D1"]["last_flight"] == later(2).isoformat() and drones["D2"]["last_flight"] == later(3).isoformat()
+    assert drones["D1"]["model"] == "DJI Test"

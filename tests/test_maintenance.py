@@ -205,3 +205,15 @@ async def test_maintenance_commands_reject_non_admins(hass, hass_ws_client, hass
     client = await hass_ws_client(hass, hass_read_only_access_token)
     for command, data in (("maintenance_get", {}), ("maintenance_set", {"drone": "D1"}), ("maintenance_serviced", {"drone": "D1"})):
         assert (await call(client, command, **data))["error"]["code"] == "unauthorized"
+
+
+async def test_removing_the_plan_makes_the_entities_unavailable(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight(sha="1" * 64, drone="D1"))
+    client = await hass_ws_client(hass)
+    await call(client, "maintenance_set", drone="D1", interval_hours=1)
+    await hass.async_block_till_done()
+    due = entity(hass, "binary_sensor", "D1", "maintenance_due")
+    assert hass.states.get(due).state == "off"
+    await call(client, "maintenance_set", drone="D1")
+    await hass.async_block_till_done()
+    assert hass.states.get(due).state == "unavailable"

@@ -163,7 +163,8 @@ async def ws_stats(hass, connection, msg, store) -> None:
                    "distance_m": sum(m.distance_m for m in months)},
         "months": [asdict(m) for m in months],
         "drones": [{"serial": d.serial, "serial_suffix": _suffix(d.serial), "model": d.model, "flights": d.flights,
-                    "duration_s": d.duration_s} for d in drones],
+                    "duration_s": d.duration_s, "distance_m": d.distance_m,
+                    "batteries": d.batteries, "last_flight": d.last_flight.isoformat() if d.last_flight else None} for d in drones],
     })
 
 
