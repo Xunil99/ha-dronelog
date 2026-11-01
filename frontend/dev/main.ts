@@ -1,6 +1,6 @@
 // Entwicklungs-Harness: gefälschtes hass-Objekt mit SYNTHETISCHEN Daten (keine echten Flüge oder Orte).
 import "../src/dronelog-panel";
-import { makeBattery, makeDetail, makeSummary } from "../src/fixtures";
+import { makeAnalysis, makeBattery, makeChannelPoints, makeDetail, makeExtras, makeSummary } from "../src/fixtures";
 
 const params = new URLSearchParams(location.search);
 const narrow = params.get("narrow") === "1";
@@ -8,11 +8,14 @@ const empty = params.get("empty") === "1";
 
 const base = new Date("2026-10-27T13:11:11Z").getTime();
 const summaries = empty ? [] : Array.from({ length: 12 }, (_, i) =>
-  makeSummary({ id: 12 - i, start: new Date(base - i * 86400000 * 3).toISOString(), duration_s: 200 + i * 40, distance_m: 900 + i * 150, battery_suffix: ["H413", "KG66", "05KP"][i % 3], has_position: i !== 5 }));
+  makeSummary({ id: 12 - i, ...(i % 2 === 0 ? { event_kinds: ['signalLossGoHome', 'weakSignal'], photo_count: 2, video_s: 95 } : {}), start: new Date(base - i * 86400000 * 3).toISOString(), duration_s: 200 + i * 40, distance_m: 900 + i * 150, battery_suffix: ["H413", "KG66", "05KP"][i % 3], has_position: i !== 5 }));
 
 function detailFor(id: number) {
   const summary = summaries.find((s) => s.id === id) ?? summaries[0];
-  const detail = makeDetail({}, summary);
+  const detail = makeDetail({ extras: makeExtras(), analysis: makeAnalysis() }, summary);
+  const channels = makeChannelPoints(60);
+  detail.points = detail.points.map((p, i) => ({ ...channels[i], lat: p.lat, lon: p.lon }));
+  detail.battery = { ...detail.battery!, internal_resistance_mohm: 187.4 };
   // Dev-Koordinaten: generischer Ort in den Alpen, nicht das Zuhause des Nutzers
   detail.points = detail.points.map((p) => ({ ...p, lat: summary.has_position ? 47.5 + (p.lat! - 48.75) : null, lon: summary.has_position ? 11.0 + (p.lon! - 12.4) : null }));
   detail.start = summary.has_position ? { lat: 47.5, lon: 11.0 } : null;
@@ -28,7 +31,7 @@ const hass = {
   callWS: async (m: Record<string, unknown>) => {
     await new Promise((r) => setTimeout(r, 80));
     switch (m.type) {
-      case "dronelog/flights": return { flights: summaries.slice(Number(m.offset ?? 0), Number(m.offset ?? 0) + Number(m.limit ?? 50)), total: summaries.length };
+      case "dronelog/flights": if (m.only_events) { const ev = summaries.filter((x) => x.event_kinds?.length); return { flights: ev.slice(0, Number(m.limit ?? 50)), total: ev.length }; } return { flights: summaries.slice(Number(m.offset ?? 0), Number(m.offset ?? 0) + Number(m.limit ?? 50)), total: summaries.length };
       case "dronelog/flight": return detailFor(Number(m.flight_id));
       case "dronelog/heatmap": return { cells: [{ lat: 47.5, lon: 11.0, count: 9 }, { lat: 47.512, lon: 11.003, count: 4 }, { lat: 47.53, lon: 11.05, count: 2 }, { lat: 47.48, lon: 10.97, count: 1 }] };
       case "dronelog/cell_flights": return { flights: summaries.slice(0, 3) };

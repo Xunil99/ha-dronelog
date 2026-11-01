@@ -26,6 +26,8 @@ export class FlightsView extends LitElement {
     error: { state: true },
     showDetail: { state: true },
     detailError: { state: true },
+    onlyEvents: { state: true },
+    eventCount: { state: true },
   };
   declare hass: HassLike;
   declare narrow: boolean;
@@ -43,6 +45,8 @@ export class FlightsView extends LitElement {
   declare error: boolean;
   declare showDetail: boolean;
   declare detailError: boolean;
+  declare onlyEvents: boolean;
+  declare eventCount: number;
   private listToken = 0;
   private detailToken = 0;
 
@@ -60,6 +64,8 @@ export class FlightsView extends LitElement {
     this.error = false;
     this.showDetail = false;
     this.detailError = false;
+    this.onlyEvents = false;
+    this.eventCount = 0;
   }
 
   static styles = [
@@ -70,6 +76,7 @@ export class FlightsView extends LitElement {
       .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
       .list { max-height: calc(100vh - 160px); overflow: auto; }
       .list.narrow { max-height: none; }
+      .filters label { display: flex; align-items: center; gap: 6px; }
       .more { width: 100%; margin-top: 8px; }
     `,
   ];
@@ -100,18 +107,30 @@ export class FlightsView extends LitElement {
     }
   }
 
+  /** Anzahl der Flüge mit Ereignissen (für den Schalter) unter den aktuellen Drohnen-/Akku-Filtern. */
+  private async loadEventCount() {
+    try {
+      const result = await this.api.flights({ limit: 1, drone: this.droneFilter || undefined, battery: this.batteryFilter || undefined, only_events: true });
+      this.eventCount = result.total;
+    } catch {
+      /* der Schalter ist optional */
+    }
+  }
+
   private async loadFlights(reset: boolean) {
     if (!reset && this.loading) return;  // Doppelklick auf "Mehr laden"
     const token = ++this.listToken;
     const offset = reset ? 0 : this.flights.length;
     this.loading = true;
     this.error = false;
+    if (reset) void this.loadEventCount();
     try {
       const result = await this.api.flights({
         limit: PAGE,
         offset,
         drone: this.droneFilter || undefined,
         battery: this.batteryFilter || undefined,
+        only_events: this.onlyEvents || undefined,
       });
       if (token !== this.listToken) return;  // inzwischen kam eine neuere Anfrage (z. B. anderer Filter)
       this.flights = reset ? result.flights : [...this.flights, ...result.flights];
@@ -162,10 +181,15 @@ export class FlightsView extends LitElement {
     void this.loadFlights(true);
   }
 
+  private onToggleEvents(event: Event) {
+    this.onlyEvents = (event.target as HTMLInputElement).checked;
+    void this.loadFlights(true);
+  }
+
   render() {
     const l = this.language;
     if (this.error) return html`<p class="muted">${t("error", l)}</p>`;
-    if (!this.loading && this.flights.length === 0 && !this.droneFilter && !this.batteryFilter) {
+    if (!this.loading && this.flights.length === 0 && !this.droneFilter && !this.batteryFilter && !this.onlyEvents) {
       return html`<p class="muted">${t("no_flights", l)}</p>`;
     }
     const list = html`
@@ -178,6 +202,9 @@ export class FlightsView extends LitElement {
           <option value="">${t("all_batteries", l)}</option>
           ${this.batteryOptions.map((b) => html`<option value=${b.serial} ?selected=${b.serial === this.batteryFilter}>…${b.suffix}</option>`)}
         </select>
+        ${this.eventCount > 0 || this.onlyEvents
+          ? html`<label class="only-events"><input type="checkbox" name="only_events" .checked=${this.onlyEvents} @change=${this.onToggleEvents} /> ${t("only_events", l)} (${this.eventCount})</label>`
+          : nothing}
       </div>
       <div class="list ${this.narrow ? "narrow" : ""}">
         <dl-flight-list

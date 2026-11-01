@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildSegments, heightRange } from "./route-segments";
+import { makePoints } from "./fixtures";
+import { buildSegments, hasSignal, heightRange, signalColor, UNKNOWN_COLOR } from "./route-segments";
 import type { Point } from "./types";
 
 const p = (t: number, lat: number | null, lon: number | null, height = 0): Point => ({ t, lat, lon, height, speed: 0, voltage: 8, current: 1, charge: 90 });
@@ -35,5 +36,32 @@ describe("heightRange", () => {
   });
   it("is 0..0 for no points", () => {
     expect(heightRange([])).toEqual({ min: 0, max: 0 });
+  });
+});
+
+describe("signal colouring", () => {
+  const pts = (dls: (number | undefined)[]) => dls.map((dl, i) => ({ ...makePoints(1)[0], t: i, lat: 47 + i * 0.001, lon: 11, ...(dl === undefined ? {} : { dl }) }));
+  it("colours red for bad and green for good signal", () => {
+    const [bad, good] = buildSegments(pts([50, 0, 100]), 0, 10, "signal");
+    expect(bad.color).toBe(signalColor(0));
+    expect(good.color).toBe(signalColor(100));
+    expect(signalColor(0)).not.toBe(signalColor(100));
+    expect(bad.known).toBe(true);
+  });
+  it("draws unknown signal grey", () => {
+    const [seg] = buildSegments(pts([90, undefined]), 0, 10, "signal");
+    expect(seg.color).toBe(UNKNOWN_COLOR);
+    expect(seg.known).toBe(false);
+  });
+  it("clamps over-range values", () => {
+    expect(signalColor(250)).toBe(signalColor(100));
+    expect(signalColor(-5)).toBe(signalColor(0));
+  });
+  it("keeps height colouring as default", () => {
+    expect(buildSegments(pts([50, 60]), 0, 10)[0].known).toBe(true);
+  });
+  it("detects whether a signal channel exists", () => {
+    expect(hasSignal(pts([undefined, undefined]))).toBe(false);
+    expect(hasSignal(pts([undefined, 40]))).toBe(true);
   });
 });

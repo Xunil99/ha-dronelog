@@ -1,4 +1,4 @@
-import type { BatteryDTO, FlightDetailDTO, FlightSummary, Point } from "./types";
+import type { AnalysisDTO, BatteryDTO, FlightDetailDTO, FlightExtrasDTO, FlightSummary, Point } from "./types";
 
 export function makeSummary(overrides: Partial<FlightSummary> = {}): FlightSummary {
   return {
@@ -33,6 +33,30 @@ export function makeBattery(overrides: Partial<BatteryDTO> = {}): BatteryDTO {
       { flight_id: 2, time: "2026-10-01T10:00:00+00:00", charge_end: 78, cycles: 2, health_pct: 98, cell_deviation_mv: 3, temp_max_c: 31, avg_power_w: 41 },
       { flight_id: 3, time: "2026-10-27T13:11:11+00:00", charge_end: 79, cycles: 3, health_pct: 98, cell_deviation_mv: 4, temp_max_c: 33, avg_power_w: 39 },
     ],
+    ...overrides,
+  };
+}
+
+export function makeChannelPoints(n = 60): Point[] {
+  return makePoints(n).map((p, i) => ({
+    ...p, dist: i * 20, dl: 95 - i, ul: 90, rec: i > 10, mode: i < 5 ? 10 : 6, temp: 22 + i / 10, cell_dev: 0.004 + i * 0.0003, pitch: Math.sin(i) * 3, roll: Math.cos(i) * 2, yaw: i,
+  }));
+}
+
+export function makeExtras(overrides: Partial<FlightExtrasDTO> = {}): FlightExtrasDTO {
+  return {
+    events: [{ t: 30, kind: "weakSignal", value: 5, severity: "warning" }, { t: 90, kind: "batteryGoHome", value: 3, severity: "warning" }],
+    energy_wh: 5.64, wh_per_km: 4, max_distance_from_start_m: 1894, downlink_min: 12, uplink_min: 80, weak_signal_s: 14,
+    photo_count: 3, video_s: 95, max_descent_ms: 3.2, max_climb_ms: 5.5, ...overrides,
+  };
+}
+
+export function makeAnalysis(overrides: Partial<AnalysisDTO> = {}): AnalysisDTO {
+  return {
+    phases: { climb: 30, cruise: 200, hover: 60, descent: 20 },
+    hover_wind: { tilt_deg: 3, bearing_deg: 45, seconds: 20, class: "moderate" },
+    cell_level: "ok",
+    mode_segments: [{ category: "automatic", title: "Start/Landung", start: 0, end: 10 }, { category: "normal", title: "Normal", start: 10, end: 118 }],
     ...overrides,
   };
 }

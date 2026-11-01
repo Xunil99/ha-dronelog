@@ -15,6 +15,10 @@ export interface FlightSummary {
   temperature_c: number | null;
   wind_10m_ms: number | null;
   has_position: boolean;
+  /** Ereignisarten, schwerste zuerst (fehlt bei älteren Backends) */
+  event_kinds?: string[];
+  photo_count?: number;
+  video_s?: number;
 }
 
 export interface Point {
@@ -26,6 +30,54 @@ export interface Point {
   voltage: number;
   current: number;
   charge: number;
+  // Kanäle nur, wenn der Flug sie enthält
+  dist?: number;
+  dl?: number;
+  ul?: number;
+  rec?: boolean;
+  mode?: number;
+  temp?: number;
+  cell_dev?: number;
+  pitch?: number;
+  roll?: number;
+  yaw?: number;
+}
+
+export type Severity = "info" | "warning" | "critical";
+
+export interface FlightEventDTO {
+  t: number;
+  kind: string;
+  value: number;
+  severity: Severity;
+}
+
+export interface FlightExtrasDTO {
+  events: FlightEventDTO[];
+  energy_wh: number;
+  wh_per_km: number | null;
+  max_distance_from_start_m: number;
+  downlink_min: number | null;
+  uplink_min: number | null;
+  weak_signal_s: number;
+  photo_count: number;
+  video_s: number;
+  max_descent_ms: number;
+  max_climb_ms: number;
+}
+
+export interface ModeSegmentDTO {
+  category: string;
+  title: string;
+  start: number;
+  end: number;
+}
+
+export interface AnalysisDTO {
+  phases: Record<string, number>;
+  hover_wind: { tilt_deg: number; bearing_deg: number; seconds: number; class: string } | null;
+  cell_level: string | null;
+  mode_segments: ModeSegmentDTO[];
 }
 
 export interface BatterySummaryDTO {
@@ -42,6 +94,7 @@ export interface BatterySummaryDTO {
   full_capacity_mah: number;
   cycles: number | null;
   health_pct: number | null;
+  internal_resistance_mohm?: number | null;
 }
 
 export interface WeatherDTO {
@@ -68,6 +121,8 @@ export interface FlightDetailDTO {
   end: LatLonDTO | null;
   points: Point[];
   source_name: string;
+  extras?: FlightExtrasDTO | null;
+  analysis?: AnalysisDTO;
 }
 
 export interface FlightsResult {
@@ -81,6 +136,7 @@ export interface FlightQuery {
   drone?: string;
   battery?: string;
   since?: string;
+  only_events?: boolean;
 }
 
 export interface MonthStat {

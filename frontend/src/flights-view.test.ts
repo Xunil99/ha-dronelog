@@ -299,4 +299,31 @@ describe("flights-view battery filter depends on the drone filter", () => {
     const last = hass.callWS.mock.calls.filter((c) => (c[0] as Record<string, unknown>).type === "dronelog/flights").pop()![0] as Record<string, unknown>;
     expect(last.battery).toBeUndefined();
   });
+
+  it("offers a toggle with the number of flights with events and filters server-side", async () => {
+    const withEvents = makeSummary({ id: 7, event_kinds: ["lowGPS"] });
+    const plain = makeSummary({ id: 8 });
+    const hass = makeHass((m) => {
+      if (m.type === "dronelog/flights") {
+        const rows = m.only_events ? [withEvents] : [plain, withEvents];
+        return { flights: m.limit === 1 ? rows.slice(0, 1) : rows, total: rows.length } satisfies FlightsResult;
+      }
+      return standardHandler([plain, withEvents])(m);
+    });
+    const el = await mount(hass);
+    expect(text(el)).toContain("Nur mit Ereignissen (1)");
+    const box = el.shadowRoot!.querySelector("input[name=only_events]") as HTMLInputElement;
+    box.checked = true;
+    box.dispatchEvent(new Event("change"));
+    await settle(el);
+    expect(hass.callWS).toHaveBeenCalledWith(expect.objectContaining({ type: "dronelog/flights", only_events: true, limit: 50 }));
+    const list = el.shadowRoot!.querySelector("dl-flight-list") as HTMLElement & { flights: unknown[] };
+    expect(list.flights).toHaveLength(1);
+  });
+
+  it("hides the toggle when no flight has events", async () => {
+    const hass = makeHass((m) => (m.type === "dronelog/flights" && m.only_events ? { flights: [], total: 0 } : standardHandler([makeSummary()])(m)));
+    const el = await mount(hass);
+    expect(el.shadowRoot!.querySelector("input[name=only_events]")).toBeNull();
+  });
 });
