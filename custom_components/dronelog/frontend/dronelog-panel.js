@@ -539,27 +539,35 @@ var Pe = class {
 			flight_id: e
 		});
 	}
-	stats(e) {
+	stats(e, t) {
 		return this.call({
 			type: "dronelog/stats",
+			drone: e,
+			battery: t
+		});
+	}
+	batteries(e) {
+		return this.call({
+			type: "dronelog/batteries",
 			drone: e
 		});
 	}
-	batteries() {
-		return this.call({ type: "dronelog/batteries" });
-	}
-	heatmap(e) {
+	heatmap(e, t, n) {
 		return this.call({
 			type: "dronelog/heatmap",
-			precision_m: e
+			precision_m: e,
+			drone: t,
+			battery: n
 		});
 	}
-	async cellFlights(e, t, n) {
+	async cellFlights(e, t, n, r, i) {
 		return (await this.call({
 			type: "dronelog/cell_flights",
 			lat: e,
 			lon: t,
-			precision_m: n
+			precision_m: n,
+			drone: r,
+			battery: i
 		})).flights;
 	}
 }, Fe = (e) => typeof e == "number" && Number.isFinite(e);
@@ -660,7 +668,10 @@ var U = {
 		battery_history: "Akkuverlauf je Akku",
 		heatmap: "Heatmap der Flugorte",
 		heatmap_hint: "Klick auf die Karte zeigt die Flüge an dieser Stelle",
-		no_battery: "Keine Akkudaten vorhanden"
+		no_battery: "Keine Akkudaten vorhanden",
+		battery_summary: "Zusammenfassung",
+		flights_count: "Flüge",
+		last_value: "zuletzt"
 	},
 	en: {
 		tab_flights: "Flights",
@@ -701,7 +712,10 @@ var U = {
 		battery_history: "Battery history",
 		heatmap: "Heatmap of flight locations",
 		heatmap_hint: "Click the map to list the flights at that spot",
-		no_battery: "No battery data available"
+		no_battery: "No battery data available",
+		battery_summary: "Summary",
+		flights_count: "Flights",
+		last_value: "latest"
 	}
 };
 function W(e, t) {
@@ -7701,7 +7715,10 @@ var no = class extends je {
 		for (let e of this.points) e.lat !== null && e.lon !== null && n.push([e.lat, e.lon]);
 		if (n.length === 0) return;
 		let r = Za.default.latLngBounds(n);
-		r.getNorthEast().equals(r.getSouthWest()) ? this.map.setView(r.getCenter(), 16) : this.map.fitBounds(r, { padding: [20, 20] });
+		r.getNorthEast().equals(r.getSouthWest()) ? this.map.setView(r.getCenter(), 16) : this.map.fitBounds(r, {
+			padding: [20, 20],
+			animate: !1
+		});
 	}
 	destroyMap() {
 		this.resizeObserver?.disconnect(), this.map?.remove(), this.map = void 0, this.layer = void 0;
@@ -8040,12 +8057,14 @@ var fo = [
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
+			drone: { type: String },
+			battery: { type: String },
 			batteries: { state: !0 },
 			metric: { state: !0 }
 		};
 	}
 	constructor() {
-		super(), this.rebuilds = 0, this.batteries = [], this.metric = "health_pct";
+		super(), this.rebuilds = 0, this.loadedOnce = !1, this.batteries = [], this.metric = "health_pct";
 	}
 	static {
 		this.styles = [
@@ -8056,17 +8075,28 @@ var fo = [
       button[aria-pressed="true"] { background: var(--primary-color); color: var(--text-primary-color, #fff); }
       .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 0.85rem; }
       .legend .warn { color: var(--error-color, #c62828); font-weight: 500; }
+      .summary { margin-top: 12px; border-top: 1px solid var(--divider-color, #ddd); padding-top: 8px; }
+      .summary h3 { font-size: 0.95rem; }
       .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
     `
 		];
 	}
-	async connectedCallback() {
-		super.connectedCallback();
+	connectedCallback() {
+		super.connectedCallback(), this.load();
+	}
+	willUpdate(e) {
+		e.has("drone") && this.loadedOnce && this.load();
+	}
+	async load() {
 		try {
-			this.batteries = (await new Pe(this.hass).batteries()).batteries;
+			this.batteries = (await new Pe(this.hass).batteries(this.drone || void 0)).batteries;
 		} catch {
 			this.batteries = [];
 		}
+		this.loadedOnce = !0;
+	}
+	get visible() {
+		return this.battery ? this.batteries.filter((e) => e.serial === this.battery) : this.batteries;
 	}
 	get language() {
 		return this.hass?.language ?? "en";
@@ -8080,16 +8110,28 @@ var fo = [
       </div>
       <div id="plot"></div>
       <div class="legend">
-        ${this.batteries.map((e, t) => z`<span class=${uo(e) ? "warn" : ""}><span class="dot" style="background:${uo(e) ? "#c62828" : po[t % po.length]}"></span>…${e.suffix} (${e.flights})${uo(e) ? " ⚠" : ""}</span>`)}
+        ${this.visible.map((e, t) => z`<span class=${uo(e) ? "warn" : ""}><span class="dot" style="background:${uo(e) ? "#c62828" : po[t % po.length]}"></span>…${e.suffix} (${e.flights})${uo(e) ? " ⚠" : ""}</span>`)}
       </div>
+      ${this.visible.length === 1 ? this.summary(this.visible[0]) : ""}
+    </div>`;
+	}
+	summary(e) {
+		let t = this.language, n = e.history[e.history.length - 1], r = (e, t = "") => e == null ? "–" : `${e}${t}`;
+		return z`<div class="summary">
+      <h3>${W("battery_summary", t)} …${e.suffix}</h3>
+      <div class="kv"><span>${W("flights_count", t)}</span><b>${e.flights}</b></div>
+      <div class="kv"><span>${W("cycles", t)}</span><b>${r(n?.cycles)}</b></div>
+      <div class="kv"><span>${W("health", t)}</span><b>${r(n?.health_pct, " %")}</b></div>
+      <div class="kv"><span>${W("cell_deviation", t)} (${W("last_value", t)})</span><b>${r(n?.cell_deviation_mv, " mV")}</b></div>
+      <div class="kv"><span>${W("temperature", t)} (${W("last_value", t)})</span><b>${r(n?.temp_max_c, " °C")}</b></div>
     </div>`;
 	}
 	updated(e) {
-		if (!e.has("batteries") && !e.has("metric")) return;
+		if (!e.has("batteries") && !e.has("metric") && !e.has("battery")) return;
 		this.rebuilds++, this.plot?.destroy(), this.plot = void 0;
-		let t = this.renderRoot.querySelector("#plot");
-		if (!t || this.batteries.length === 0 || !Ka()) return;
-		let { x: n, series: r } = lo(this.batteries, this.metric);
+		let t = this.renderRoot.querySelector("#plot"), n = this.visible;
+		if (!t || n.length === 0 || !Ka()) return;
+		let { x: r, series: i } = lo(n, this.metric);
 		try {
 			this.plot = new Wa({
 				width: t.clientWidth || 600,
@@ -8097,14 +8139,14 @@ var fo = [
 				legend: { show: !1 },
 				scales: { x: { time: !0 } },
 				axes: [{ grid: { stroke: "rgba(128,128,128,0.2)" } }, { grid: { stroke: "rgba(128,128,128,0.2)" } }],
-				series: [{}, ...this.batteries.map((e, t) => ({
+				series: [{}, ...n.map((e, t) => ({
 					label: `…${e.suffix}`,
 					stroke: uo(e) ? "#c62828" : po[t % po.length],
 					width: 2,
 					spanGaps: !0,
 					points: { show: !0 }
 				}))]
-			}, [n, ...r], t);
+			}, [r, ...i], t);
 		} catch {
 			this.plot = void 0;
 		}
@@ -8234,6 +8276,8 @@ var ho = class extends je {
 		this.properties = {
 			hass: { attribute: !1 },
 			tileUrl: { type: String },
+			drone: { type: String },
+			battery: { type: String },
 			cells: { state: !0 },
 			precision: { state: !0 },
 			flights: { state: !0 },
@@ -8264,7 +8308,7 @@ var ho = class extends je {
 	}
 	async load() {
 		try {
-			this.cells = (await new Pe(this.hass).heatmap(this.precision)).cells;
+			this.cells = (await new Pe(this.hass).heatmap(this.precision, this.drone || void 0, this.battery || void 0)).cells;
 		} catch {
 			this.cells = [];
 		}
@@ -8276,7 +8320,7 @@ var ho = class extends je {
 	async handleCellClick(e, t) {
 		let n = ++this.clickToken;
 		try {
-			let r = await new Pe(this.hass).cellFlights(e, t, this.precision);
+			let r = await new Pe(this.hass).cellFlights(e, t, this.precision, this.drone || void 0, this.battery || void 0);
 			n === this.clickToken && (this.flights = r);
 		} catch {
 			n === this.clickToken && (this.flights = []);
@@ -8304,6 +8348,9 @@ var ho = class extends je {
       ${this.flights.length ? z`<ul>${this.flights.map((t) => z`<li @click=${() => this.open(t.id)}>${He(t.start, this.hass?.config?.time_zone ?? "UTC", e)} · ${Le(t.duration_s)} · ${t.drone_model}</li>`)}</ul>` : B}
     </div>`;
 	}
+	willUpdate(e) {
+		(e.has("drone") || e.has("battery")) && this.loaded && (this.flights = [], this.load());
+	}
 	updated(e) {
 		let t = this.renderRoot.querySelector(".map");
 		if (!t || this.cells.length === 0) return;
@@ -8327,7 +8374,8 @@ var ho = class extends je {
 			}
 			this.map.fitBounds(Za.default.latLngBounds(this.cells.map((e) => [e.lat, e.lon])), {
 				padding: [30, 30],
-				maxZoom: 14
+				maxZoom: 14,
+				animate: !1
 			});
 		}
 	}
@@ -8344,12 +8392,14 @@ var go = class extends je {
 			tileUrl: { type: String },
 			stats: { state: !0 },
 			drone: { state: !0 },
+			battery: { state: !0 },
+			batteries: { state: !0 },
 			metric: { state: !0 },
 			error: { state: !0 }
 		};
 	}
 	constructor() {
-		super(), this.tileUrl = "", this.drone = "", this.metric = "flights", this.error = !1;
+		super(), this.tileUrl = "", this.drone = "", this.battery = "", this.batteries = [], this.metric = "flights", this.error = !1;
 	}
 	static {
 		this.styles = [Ya, h`
@@ -8368,27 +8418,40 @@ var go = class extends je {
     `];
 	}
 	connectedCallback() {
-		super.connectedCallback(), this.load();
+		super.connectedCallback(), this.load(), this.loadBatteries();
+	}
+	async loadBatteries() {
+		try {
+			this.batteries = (await new Pe(this.hass).batteries()).batteries;
+		} catch {
+			this.batteries = [];
+		}
+	}
+	get batteryOptions() {
+		return this.drone ? this.batteries.filter((e) => e.drones.includes(this.drone)) : [];
 	}
 	get language() {
 		return this.hass?.language ?? "en";
 	}
 	async load() {
 		try {
-			this.stats = await new Pe(this.hass).stats(this.drone || void 0), this.error = !1;
+			this.stats = await new Pe(this.hass).stats(this.drone || void 0, this.battery || void 0), this.error = !1;
 		} catch {
 			this.error = !0;
 		}
 	}
 	onDrone(e) {
-		this.drone = e.target.value, this.load();
+		this.drone = e.target.value, this.battery = "", this.load();
+	}
+	onBattery(e) {
+		this.battery = e.target.value, this.load();
 	}
 	render() {
 		let e = this.language;
 		if (this.error) return z`<p class="muted">${W("error", e)}</p>`;
 		let t = this.stats;
 		if (!t) return z`<p class="muted">${W("loading", e)}</p>`;
-		if (t.totals.flights === 0 && !this.drone) return z`<p class="muted">${W("no_flights", e)}</p>`;
+		if (t.totals.flights === 0 && !this.drone && !this.battery) return z`<p class="muted">${W("no_flights", e)}</p>`;
 		let n = so(t.months), r = (e) => this.metric === "flights" ? e.flights : e.duration_s, i = Math.max(1, ...n.map(r)), a = (e) => this.metric === "flights" ? String(e.flights) : Le(e.duration_s);
 		return z`
       <section>
@@ -8401,6 +8464,10 @@ var go = class extends je {
           <select name="drone" @change=${this.onDrone}>
             <option value="">${W("all_drones", e)}</option>
             ${t.drones.map((e) => z`<option value=${e.serial} ?selected=${e.serial === this.drone}>${e.model} …${e.serial_suffix}</option>`)}
+          </select>
+          <select name="battery" @change=${this.onBattery} ?disabled=${!this.drone}>
+            <option value="">${W("all_batteries", e)}</option>
+            ${this.batteryOptions.map((e) => z`<option value=${e.serial} ?selected=${e.serial === this.battery}>…${e.suffix}</option>`)}
           </select>
           <button data-metric="flights" aria-pressed=${this.metric === "flights"} @click=${() => this.metric = "flights"}>${W("metric_flights", e)}</button>
           <button data-metric="duration" aria-pressed=${this.metric === "duration"} @click=${() => this.metric = "duration"}>${W("metric_hours", e)}</button>
@@ -8418,8 +8485,8 @@ var go = class extends je {
           ${t.drones.map((e) => z`<div class="kv"><span>${e.model} …${e.serial_suffix}</span><b>${e.flights} · ${Le(e.duration_s)}</b></div>`)}
         </div>
       </section>
-      <section><dl-battery-history .hass=${this.hass}></dl-battery-history></section>
-      <section><dl-heatmap-view .hass=${this.hass} .tileUrl=${this.tileUrl}></dl-heatmap-view></section>
+      <section><dl-battery-history .hass=${this.hass} .drone=${this.drone || void 0} .battery=${this.battery || void 0}></dl-battery-history></section>
+      <section><dl-heatmap-view .hass=${this.hass} .tileUrl=${this.tileUrl} .drone=${this.drone || void 0} .battery=${this.battery || void 0}></dl-heatmap-view></section>
     `;
 	}
 };

@@ -35,4 +35,19 @@ describe("DroneLogApi", () => {
     const h = { callWS: vi.fn().mockRejectedValue({ code: "unauthorized", message: "nein" }) };
     await expect(new DroneLogApi(h).stats()).rejects.toMatchObject({ code: "unauthorized" });
   });
+
+  it("passes drone and battery filters on", async () => {
+    const h = hass({ cells: [], flights: [], batteries: [] });
+    const api = new DroneLogApi(h);
+    await api.stats("D1", "B1");
+    await api.batteries("D1");
+    await api.heatmap(300, "D1", "B1");
+    await api.cellFlights(1, 2, 300, "D1", "B1");
+    expect(h.callWS.mock.calls.map((c) => c[0])).toEqual([
+      { type: "dronelog/stats", drone: "D1", battery: "B1" },
+      { type: "dronelog/batteries", drone: "D1" },
+      { type: "dronelog/heatmap", precision_m: 300, drone: "D1", battery: "B1" },
+      { type: "dronelog/cell_flights", lat: 1, lon: 2, precision_m: 300, drone: "D1", battery: "B1" },
+    ]);
+  });
 });

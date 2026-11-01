@@ -17,17 +17,17 @@ export class DroneLogApi {
   flight(id: number): Promise<FlightDetailDTO> {
     return this.call({ type: "dronelog/flight", flight_id: id });
   }
-  stats(drone?: string): Promise<StatsDTO> {
-    return this.call({ type: "dronelog/stats", drone });
+  stats(drone?: string, battery?: string): Promise<StatsDTO> {
+    return this.call({ type: "dronelog/stats", drone, battery });
   }
-  batteries(): Promise<BatteriesDTO> {
-    return this.call({ type: "dronelog/batteries" });
+  batteries(drone?: string): Promise<BatteriesDTO> {
+    return this.call({ type: "dronelog/batteries", drone });
   }
-  heatmap(precisionM?: number): Promise<HeatmapDTO> {
-    return this.call({ type: "dronelog/heatmap", precision_m: precisionM });
+  heatmap(precisionM?: number, drone?: string, battery?: string): Promise<HeatmapDTO> {
+    return this.call({ type: "dronelog/heatmap", precision_m: precisionM, drone, battery });
   }
-  async cellFlights(lat: number, lon: number, precisionM?: number): Promise<FlightSummary[]> {
-    const result = await this.call<{ flights: FlightSummary[] }>({ type: "dronelog/cell_flights", lat, lon, precision_m: precisionM });
+  async cellFlights(lat: number, lon: number, precisionM?: number, drone?: string, battery?: string): Promise<FlightSummary[]> {
+    const result = await this.call<{ flights: FlightSummary[] }>({ type: "dronelog/cell_flights", lat, lon, precision_m: precisionM, drone, battery });
     return result.flights;
   }
 }

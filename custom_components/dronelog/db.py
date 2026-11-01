@@ -218,9 +218,10 @@ class FlightStore:
         last = self.list_flights(limit=1)
         return Totals(flights=count, duration_s=duration, distance_m=distance, last_flight=last[0] if last else None)
 
-    def battery_history(self, serial: str) -> list[BatteryPoint]:
+    def battery_history(self, serial: str, drone: str | None = None) -> list[BatteryPoint]:
+        clause, args = (" AND drone_serial=?", [serial, drone]) if drone else ("", [serial])
         with self._connect() as conn:
-            rows = conn.execute("SELECT id, start_utc, battery_json FROM flights WHERE battery_serial=? ORDER BY start_utc", (serial,)).fetchall()
+            rows = conn.execute(f"SELECT id, start_utc, battery_json FROM flights WHERE battery_serial=?{clause} ORDER BY start_utc", args).fetchall()
         points = []
         for flight_id, start, battery_json in rows:
             b = json.loads(battery_json)
@@ -244,13 +245,19 @@ class FlightStore:
         lat = cell[0] * lat_step
         return lat, cell[1] * lat_step / max(math.cos(math.radians(lat)), 0.01)
 
-    def _positions(self, conn) -> list[tuple[int, float | None, float | None, float | None, float | None]]:
-        return conn.execute("SELECT id, start_lat, start_lon, end_lat, end_lon FROM flights").fetchall()
+    def _positions(self, conn, drone: str | None = None, battery: str | None = None) -> list[tuple[int, float | None, float | None, float | None, float | None]]:
+        where, args = [], []
+        if drone:
+            where.append("drone_serial=?"); args.append(drone)
+        if battery:
+            where.append("battery_serial=?"); args.append(battery)
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        return conn.execute(f"SELECT id, start_lat, start_lon, end_lat, end_lon FROM flights {clause}", args).fetchall()
 
-    def heat_cells(self, precision_m: int = 300) -> list[HeatCell]:
+    def heat_cells(self, precision_m: int = 300, drone: str | None = None, battery: str | None = None) -> list[HeatCell]:
         counts: dict[tuple[int, int], int] = {}
         with self._connect() as conn:
-            for _id, s_lat, s_lon, e_lat, e_lon in self._positions(conn):
+            for _id, s_lat, s_lon, e_lat, e_lon in self._positions(conn, drone, battery):
                 cells = set()
                 if s_lat is not None and s_lon is not None:
                     cells.add(self._cell(s_lat, s_lon, precision_m))
@@ -261,11 +268,12 @@ class FlightStore:
         return [HeatCell(lat=lat, lon=lon, count=count)
                 for cell, count in counts.items() for lat, lon in [self._cell_center(cell, precision_m)]]
 
-    def flights_in_cell(self, lat: float, lon: float, precision_m: int = 300) -> list[FlightRow]:
+    def flights_in_cell(self, lat: float, lon: float, precision_m: int = 300, drone: str | None = None,
+                        battery: str | None = None) -> list[FlightRow]:
         target = self._cell(lat, lon, precision_m)
         ids = []
         with self._connect() as conn:
-            for flight_id, s_lat, s_lon, e_lat, e_lon in self._positions(conn):
+            for flight_id, s_lat, s_lon, e_lat, e_lon in self._positions(conn, drone, battery):
                 points = [(s_lat, s_lon), (e_lat, e_lon)]
                 if any(a is not None and b is not None and self._cell(a, b, precision_m) == target for a, b in points):
                     ids.append(flight_id)
@@ -275,22 +283,30 @@ class FlightStore:
             rows = conn.execute(f"SELECT {_FLIGHT_COLUMNS} {_FLIGHT_FROM} WHERE f.id IN ({marks}) ORDER BY f.start_utc DESC", ids).fetchall()
         return [_row(r) for r in rows]
 
-    def monthly_stats(self, drone: str | None = None) -> list[MonthStat]:
-        clause, args = ("WHERE drone_serial=?", [drone]) if drone else ("", [])
+    def monthly_stats(self, drone: str | None = None, battery: str | None = None) -> list[MonthStat]:
+        where, args = [], []
+        if drone:
+            where.append("drone_serial=?"); args.append(drone)
+        if battery:
+            where.append("battery_serial=?"); args.append(battery)
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
         with self._connect() as conn:
             rows = conn.execute(
                 f"SELECT substr(start_utc,1,7), COUNT(*), SUM(duration_s), SUM(distance_m) FROM flights {clause} "
                 "GROUP BY 1 ORDER BY 1", args).fetchall()
         return [MonthStat(month=m, flights=c, duration_s=d or 0.0, distance_m=dist or 0.0) for m, c, d, dist in rows]
 
-    def battery_list(self) -> list[BatteryListItem]:
+    def battery_list(self, drone: str | None = None) -> list[BatteryListItem]:
+        flight_filter = " AND f.drone_serial=?" if drone else ""
+        args = [drone] if drone else []
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT b.serial, (SELECT COUNT(*) FROM flights f WHERE f.battery_serial=b.serial), b.first_seen, b.last_seen "
-                "FROM batteries b WHERE EXISTS (SELECT 1 FROM flights f WHERE f.battery_serial=b.serial) ORDER BY b.serial").fetchall()
+                "SELECT b.serial, (SELECT COUNT(*) FROM flights f WHERE f.battery_serial=b.serial" + flight_filter + "), b.first_seen, b.last_seen "
+                "FROM batteries b WHERE EXISTS (SELECT 1 FROM flights f WHERE f.battery_serial=b.serial" + flight_filter + ") ORDER BY b.serial",
+                args + args).fetchall()
         items = []
         for serial, count, first, last in rows:
-            history = self.battery_history(serial)
+            history = self.battery_history(serial, drone=drone)
             with self._connect() as conn:
                 drones = tuple(r[0] for r in conn.execute(
                     "SELECT DISTINCT drone_serial FROM flights WHERE battery_serial=? ORDER BY drone_serial", (serial,)))

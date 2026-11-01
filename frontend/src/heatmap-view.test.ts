@@ -4,7 +4,7 @@ import { makeSummary } from "./fixtures";
 
 function hassFor(cells: { lat: number; lon: number; count: number }[]) {
   return { language: "de", config: { time_zone: "UTC" }, themes: { darkMode: false },
-    callWS: vi.fn(async (m: Record<string, unknown>) => (m.type === "dronelog/heatmap" ? { cells } : { flights: [makeSummary({ id: 7 })] })) };
+    callWS: vi.fn(async (m: Record<string, unknown>) => (m.type === "dronelog/heatmap" ? { cells: cells.map((c) => ({ ...c })) } : { flights: [makeSummary({ id: 7 })] })) };
 }
 
 type El = HTMLElement & { hass: unknown; tileUrl: string; updateComplete: Promise<boolean>; handleCellClick(lat: number, lon: number): Promise<void> };
@@ -68,5 +68,42 @@ describe("heatmap-view", () => {
     const el = await mount(hass);
     hass.callWS.mockRejectedValueOnce({ code: "unknown_error" });
     await expect(el.handleCellClick(1, 1)).resolves.toBeUndefined();
+  });
+
+
+  it("requests the heatmap with drone and battery filters and reloads when they change", async () => {
+    const hass = hassFor([{ lat: 47.5, lon: 11, count: 2 }]);
+    const el = await mount(hass);
+    (el as unknown as { drone: string; battery: string }).drone = "D1";
+    (el as unknown as { drone: string; battery: string }).battery = "B1";
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/heatmap", precision_m: 300, drone: "D1", battery: "B1" });
+  });
+
+  it("passes the filters to the cell request", async () => {
+    const hass = hassFor([{ lat: 47.5, lon: 11, count: 2 }]);
+    const el = await mount(hass);
+    (el as unknown as { drone: string }).drone = "D1";
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    await el.handleCellClick(47.5, 11);
+    expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/cell_flights", lat: 47.5, lon: 11, precision_m: 300, drone: "D1" });
+  });
+
+
+  it("fits the map without animation so a filter change takes effect immediately", async () => {
+    const hass = hassFor([{ lat: 47.5, lon: 11, count: 2 }]);
+    const el = await mount(hass);
+    const map = (el as unknown as { map: { fitBounds: (...a: unknown[]) => unknown } }).map;
+    const original = map.fitBounds.bind(map);
+    const options: unknown[] = [];
+    map.fitBounds = (bounds: unknown, opts: unknown) => { options.push(opts); return original(bounds, opts); };
+    (el as unknown as { drone: string }).drone = "D1";
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    await el.updateComplete;
+    expect(options.length).toBeGreaterThan(0);
+    expect(options[0]).toMatchObject({ animate: false });
   });
 });

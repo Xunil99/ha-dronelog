@@ -176,3 +176,26 @@ async def test_batteries_contain_the_drone_serials_they_flew_with(hass, hass_ws_
     batteries = {b["serial"]: b for b in (await call(await hass_ws_client(hass), "batteries"))["result"]["batteries"]}
     assert batteries["B1"]["drones"] == ["D1"]
     assert batteries["B2"]["drones"] == ["D2"]
+
+
+async def test_stats_accept_battery_filter(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight(sha="1" * 64, battery="B1", start=later(0), duration=100), make_flight(sha="2" * 64, battery="B2", start=later(1), duration=300))
+    result = (await call(await hass_ws_client(hass), "stats", battery="B2"))["result"]
+    assert result["totals"]["flights"] == 1 and result["totals"]["duration_s"] == 300
+    assert len(result["drones"]) >= 1   # die Drohnenliste für das Auswahlfeld bleibt vollständig
+
+
+async def test_batteries_accept_drone_filter(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight(sha="1" * 64, battery="B1", drone="D1", start=later(1)), make_flight(sha="2" * 64, battery="B2", drone="D2", start=later(2)))
+    batteries = (await call(await hass_ws_client(hass), "batteries", drone="D1"))["result"]["batteries"]
+    assert [b["serial"] for b in batteries] == ["B1"]
+
+
+async def test_heatmap_and_cell_flights_accept_filters(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight(sha="1" * 64, drone="D1", battery="B1", lat=48.75, lon=12.4),
+              make_flight(sha="2" * 64, drone="D2", battery="B2", lat=48.7501, lon=12.4001, start=later(1)))
+    client = await hass_ws_client(hass)
+    assert [c["count"] for c in (await call(client, "heatmap", drone="D1"))["result"]["cells"]] == [1]
+    assert [c["count"] for c in (await call(client, "heatmap", battery="B2"))["result"]["cells"]] == [1]
+    flights = (await call(client, "cell_flights", lat=48.75, lon=12.4, drone="D2"))["result"]["flights"]
+    assert [f["id"] for f in flights] == [2]

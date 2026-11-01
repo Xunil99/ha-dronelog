@@ -96,7 +96,7 @@ export class RouteMap extends LitElement {
     const area = L.latLngBounds(bounds);
     // Ein einzelner Punkt (oder Start = Landung) ergibt keine Fläche: dann nah heranzoomen statt Weltkarte
     if (area.getNorthEast().equals(area.getSouthWest())) this.map.setView(area.getCenter(), 16);
-    else this.map.fitBounds(area, { padding: [20, 20] });
+    else this.map.fitBounds(area, { padding: [20, 20], animate: false });
   }
 
   private destroyMap() {

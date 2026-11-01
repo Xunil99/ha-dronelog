@@ -6,7 +6,7 @@ import "./heatmap-view";
 import { t } from "./i18n";
 import { fillMonths, monthLabel } from "./stats-logic";
 import { baseStyles } from "./styles";
-import type { HassLike, StatsDTO } from "./types";
+import type { BatteryDTO, HassLike, StatsDTO } from "./types";
 
 type Metric = "flights" | "duration";
 
@@ -16,6 +16,8 @@ export class StatsView extends LitElement {
     tileUrl: { type: String },
     stats: { state: true },
     drone: { state: true },
+    battery: { state: true },
+    batteries: { state: true },
     metric: { state: true },
     error: { state: true },
   };
@@ -23,6 +25,8 @@ export class StatsView extends LitElement {
   declare tileUrl: string;
   declare stats: StatsDTO | undefined;
   declare drone: string;
+  declare battery: string;
+  declare batteries: BatteryDTO[];
   declare metric: Metric;
   declare error: boolean;
 
@@ -30,6 +34,8 @@ export class StatsView extends LitElement {
     super();
     this.tileUrl = "";
     this.drone = "";
+    this.battery = "";
+    this.batteries = [];
     this.metric = "flights";
     this.error = false;
   }
@@ -55,6 +61,20 @@ export class StatsView extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     void this.load();
+    void this.loadBatteries();
+  }
+
+  private async loadBatteries() {
+    try {
+      this.batteries = (await new DroneLogApi(this.hass).batteries()).batteries;
+    } catch {
+      this.batteries = [];
+    }
+  }
+
+  /** Akkus erscheinen nur, wenn die zugehörige Drohne gewählt ist. */
+  private get batteryOptions(): BatteryDTO[] {
+    return this.drone ? this.batteries.filter((b) => b.drones.includes(this.drone)) : [];
   }
 
   private get language() {
@@ -63,7 +83,7 @@ export class StatsView extends LitElement {
 
   private async load() {
     try {
-      this.stats = await new DroneLogApi(this.hass).stats(this.drone || undefined);
+      this.stats = await new DroneLogApi(this.hass).stats(this.drone || undefined, this.battery || undefined);
       this.error = false;
     } catch {
       this.error = true;
@@ -72,6 +92,12 @@ export class StatsView extends LitElement {
 
   private onDrone(event: Event) {
     this.drone = (event.target as HTMLSelectElement).value;
+    this.battery = "";  // ein Akku einer anderen Drohne gilt nicht mehr
+    void this.load();
+  }
+
+  private onBattery(event: Event) {
+    this.battery = (event.target as HTMLSelectElement).value;
     void this.load();
   }
 
@@ -80,7 +106,7 @@ export class StatsView extends LitElement {
     if (this.error) return html`<p class="muted">${t("error", l)}</p>`;
     const s = this.stats;
     if (!s) return html`<p class="muted">${t("loading", l)}</p>`;
-    if (s.totals.flights === 0 && !this.drone) return html`<p class="muted">${t("no_flights", l)}</p>`;
+    if (s.totals.flights === 0 && !this.drone && !this.battery) return html`<p class="muted">${t("no_flights", l)}</p>`;
     const months = fillMonths(s.months);
     const value = (m: (typeof months)[number]) => (this.metric === "flights" ? m.flights : m.duration_s);
     const peak = Math.max(1, ...months.map(value));
@@ -96,6 +122,10 @@ export class StatsView extends LitElement {
           <select name="drone" @change=${this.onDrone}>
             <option value="">${t("all_drones", l)}</option>
             ${s.drones.map((d) => html`<option value=${d.serial} ?selected=${d.serial === this.drone}>${d.model} …${d.serial_suffix}</option>`)}
+          </select>
+          <select name="battery" @change=${this.onBattery} ?disabled=${!this.drone}>
+            <option value="">${t("all_batteries", l)}</option>
+            ${this.batteryOptions.map((b) => html`<option value=${b.serial} ?selected=${b.serial === this.battery}>…${b.suffix}</option>`)}
           </select>
           <button data-metric="flights" aria-pressed=${this.metric === "flights"} @click=${() => (this.metric = "flights")}>${t("metric_flights", l)}</button>
           <button data-metric="duration" aria-pressed=${this.metric === "duration"} @click=${() => (this.metric = "duration")}>${t("metric_hours", l)}</button>
@@ -115,8 +145,8 @@ export class StatsView extends LitElement {
           ${s.drones.map((d) => html`<div class="kv"><span>${d.model} …${d.serial_suffix}</span><b>${d.flights} · ${formatDuration(d.duration_s)}</b></div>`)}
         </div>
       </section>
-      <section><dl-battery-history .hass=${this.hass}></dl-battery-history></section>
-      <section><dl-heatmap-view .hass=${this.hass} .tileUrl=${this.tileUrl}></dl-heatmap-view></section>
+      <section><dl-battery-history .hass=${this.hass} .drone=${this.drone || undefined} .battery=${this.battery || undefined}></dl-battery-history></section>
+      <section><dl-heatmap-view .hass=${this.hass} .tileUrl=${this.tileUrl} .drone=${this.drone || undefined} .battery=${this.battery || undefined}></dl-heatmap-view></section>
     `;
   }
 }

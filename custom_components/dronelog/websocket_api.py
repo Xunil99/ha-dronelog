@@ -103,9 +103,9 @@ async def ws_flight(hass, connection, msg, store) -> None:
     })
 
 
-@_command({vol.Optional("drone"): str})
+@_command({vol.Optional("drone"): str, vol.Optional("battery"): str})
 async def ws_stats(hass, connection, msg, store) -> None:
-    months = await hass.async_add_executor_job(store.monthly_stats, msg.get("drone"))
+    months = await hass.async_add_executor_job(store.monthly_stats, msg.get("drone"), msg.get("battery"))
     drones = await hass.async_add_executor_job(store.drone_list)
     connection.send_result(msg["id"], {
         "totals": {"flights": sum(m.flights for m in months), "duration_s": sum(m.duration_s for m in months),
@@ -116,29 +116,31 @@ async def ws_stats(hass, connection, msg, store) -> None:
     })
 
 
-@_command({})
+@_command({vol.Optional("drone"): str})
 async def ws_batteries(hass, connection, msg, store) -> None:
     def load():
         result = []
-        for item in store.battery_list():
+        for item in store.battery_list(msg.get("drone")):
             result.append({"serial": item.serial, "suffix": _suffix(item.serial), "flights": item.flights,
                            "first": item.first.isoformat(), "last": item.last.isoformat(), "drones": list(item.drones),
-                           "history": [_history_point(p) for p in store.battery_history(item.serial)]})
+                           "history": [_history_point(p) for p in store.battery_history(item.serial, msg.get("drone"))]})
         return result
 
     connection.send_result(msg["id"], {"batteries": await hass.async_add_executor_job(load)})
 
 
-@_command({vol.Optional("precision_m", default=300): vol.All(int, vol.Range(min=100, max=2000))})
+@_command({vol.Optional("precision_m", default=300): vol.All(int, vol.Range(min=100, max=2000)),
+           vol.Optional("drone"): str, vol.Optional("battery"): str})
 async def ws_heatmap(hass, connection, msg, store) -> None:
-    cells = await hass.async_add_executor_job(store.heat_cells, msg["precision_m"])
+    cells = await hass.async_add_executor_job(store.heat_cells, msg["precision_m"], msg.get("drone"), msg.get("battery"))
     connection.send_result(msg["id"], {"cells": [asdict(c) for c in cells]})
 
 
 @_command({vol.Required("lat"): vol.Coerce(float), vol.Required("lon"): vol.Coerce(float),
-           vol.Optional("precision_m", default=300): vol.All(int, vol.Range(min=100, max=2000))})
+           vol.Optional("precision_m", default=300): vol.All(int, vol.Range(min=100, max=2000)),
+           vol.Optional("drone"): str, vol.Optional("battery"): str})
 async def ws_cell_flights(hass, connection, msg, store) -> None:
-    rows = await hass.async_add_executor_job(store.flights_in_cell, msg["lat"], msg["lon"], msg["precision_m"])
+    rows = await hass.async_add_executor_job(store.flights_in_cell, msg["lat"], msg["lon"], msg["precision_m"], msg.get("drone"), msg.get("battery"))
     connection.send_result(msg["id"], {"flights": [summary(r) for r in rows]})
 
 

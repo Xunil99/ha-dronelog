@@ -13,6 +13,8 @@ export class HeatmapView extends LitElement {
   static properties = {
     hass: { attribute: false },
     tileUrl: { type: String },
+    drone: { type: String },
+    battery: { type: String },
     cells: { state: true },
     precision: { state: true },
     flights: { state: true },
@@ -20,6 +22,8 @@ export class HeatmapView extends LitElement {
   };
   declare hass: HassLike;
   declare tileUrl: string;
+  declare drone: string | undefined;
+  declare battery: string | undefined;
   declare cells: HeatCellDTO[];
   declare precision: number;
   declare flights: FlightSummary[];
@@ -60,7 +64,7 @@ export class HeatmapView extends LitElement {
 
   private async load() {
     try {
-      this.cells = (await new DroneLogApi(this.hass).heatmap(this.precision)).cells;
+      this.cells = (await new DroneLogApi(this.hass).heatmap(this.precision, this.drone || undefined, this.battery || undefined)).cells;
     } catch {
       this.cells = [];
     }
@@ -76,7 +80,7 @@ export class HeatmapView extends LitElement {
   async handleCellClick(lat: number, lon: number) {
     const request = ++this.clickToken;
     try {
-      const flights = await new DroneLogApi(this.hass).cellFlights(lat, lon, this.precision);
+      const flights = await new DroneLogApi(this.hass).cellFlights(lat, lon, this.precision, this.drone || undefined, this.battery || undefined);
       if (request === this.clickToken) this.flights = flights;
     } catch {
       if (request === this.clickToken) this.flights = [];
@@ -106,6 +110,14 @@ export class HeatmapView extends LitElement {
     </div>`;
   }
 
+  willUpdate(changed: Map<string, unknown>) {
+    // Filter geändert (nicht beim ersten Setzen im connectedCallback, das lädt schon selbst)
+    if ((changed.has("drone") || changed.has("battery")) && this.loaded) {
+      this.flights = [];
+      void this.load();
+    }
+  }
+
   updated(changed: Map<string, unknown>) {
     const container = this.renderRoot.querySelector(".map") as HTMLElement | null;
     if (!container || this.cells.length === 0) return;
@@ -122,7 +134,7 @@ export class HeatmapView extends LitElement {
       const peak = Math.max(...this.cells.map((c) => c.count));
       this.heat = L.heatLayer(this.cells.map((c) => [c.lat, c.lon, c.count / peak]), { radius: 32, blur: 20, maxZoom: 14, minOpacity: 0.45 }).addTo(this.map);
     }
-    this.map.fitBounds(L.latLngBounds(this.cells.map((c) => [c.lat, c.lon] as L.LatLngTuple)), { padding: [30, 30], maxZoom: 14 });
+    this.map.fitBounds(L.latLngBounds(this.cells.map((c) => [c.lat, c.lon] as L.LatLngTuple)), { padding: [30, 30], maxZoom: 14, animate: false });
   }
 
   disconnectedCallback() {

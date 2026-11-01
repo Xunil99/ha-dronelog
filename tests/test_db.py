@@ -200,3 +200,32 @@ def test_battery_list_ignores_batteries_without_any_flight(store):
     store.add_flight(make_flight(sha="2" * 64, battery="NEW", start=later(1)), None, "b")
     store.delete_flight(flight_id)   # der Akku "OLD" bleibt in der Tabelle batteries zurück
     assert [b.serial for b in store.battery_list()] == ["NEW"]
+
+
+def test_monthly_stats_filters_by_battery(store):
+    store.add_flight(make_flight(sha="1" * 64, battery="B1", start=later(0), duration=100), None, "a")
+    store.add_flight(make_flight(sha="2" * 64, battery="B2", start=later(1), duration=300), None, "b")
+    stats = store.monthly_stats(battery="B2")
+    assert [(m.flights, m.duration_s) for m in stats] == [(1, 300)]
+    assert [m.flights for m in store.monthly_stats(drone="DRONE1", battery="B2")] == [1]
+
+
+def test_heat_cells_and_cell_flights_filter_by_drone_and_battery(store):
+    store.add_flight(make_flight(sha="1" * 64, drone="D1", battery="B1", lat=48.75, lon=12.4), None, "a")
+    store.add_flight(make_flight(sha="2" * 64, drone="D2", battery="B2", lat=48.7501, lon=12.4001, start=later(1)), None, "b")
+    assert [c.count for c in store.heat_cells(300)] == [2]
+    assert [c.count for c in store.heat_cells(300, drone="D1")] == [1]
+    assert [c.count for c in store.heat_cells(300, battery="B2")] == [1]
+    assert [f.sha256[0] for f in store.flights_in_cell(48.75, 12.4, 300, drone="D2")] == ["2"]
+    assert store.heat_cells(300, drone="NIX") == []
+
+
+def test_battery_list_for_a_drone_only_counts_and_summarises_that_drones_flights(store):
+    store.add_flight(make_flight(sha="1" * 64, battery="B1", drone="D1", start=later(1), battery_summary=make_battery(cycles=3)), None, "a")
+    store.add_flight(make_flight(sha="2" * 64, battery="B1", drone="D2", start=later(2), battery_summary=make_battery(cycles=4)), None, "b")
+    store.add_flight(make_flight(sha="3" * 64, battery="B9", drone="D2", start=later(3)), None, "c")
+    items = {b.serial: b for b in store.battery_list(drone="D1")}
+    assert list(items) == ["B1"]
+    assert items["B1"].flights == 1
+    assert items["B1"].latest.cycles == 3
+    assert [p.cycles for p in store.battery_history("B1", drone="D1")] == [3]
