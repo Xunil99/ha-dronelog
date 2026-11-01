@@ -156,3 +156,12 @@ async def test_ws_note_and_place_validation(hass, hass_ws_client, setup_dronelog
     assert (await call(client, "note_set", flight_id=99, text="x"))["error"]["code"] == "not_found"
     assert not (await call(client, "place_name_set", key="kaputt", name="x"))["success"]
     assert not (await call(client, "place_name_set", key="1,2", name="x" * 500))["success"]
+
+
+async def test_ws_logbook_tags_follow_the_filter(hass, hass_ws_client, setup_dronelog):
+    await add(hass, lf("a", utc(2026, 1, 1), 60, 10, 5, 1, 47.0, 11.0, drone="D1"), lf("b", utc(2026, 1, 2), 60, 10, 5, 1, 47.0, 11.0, drone="D2"))
+    client = await hass_ws_client(hass)
+    await call(client, "note_set", flight_id=1, tags="Eins")
+    await call(client, "note_set", flight_id=2, tags="Zwei")
+    assert (await call(client, "logbook"))["result"]["tags"] == {"Eins": 1, "Zwei": 1}
+    assert (await call(client, "logbook", drone="D2"))["result"]["tags"] == {"Zwei": 1}

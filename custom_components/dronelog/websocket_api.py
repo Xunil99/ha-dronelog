@@ -269,7 +269,7 @@ async def ws_logbook(hass, connection, msg, store) -> None:
     tz = local_tz(hass)
     book = await hass.async_add_executor_job(lambda: store.logbook(msg.get("drone"), msg.get("battery"), tz))
     names = await hass.async_add_executor_job(store.place_names)
-    tags = await hass.async_add_executor_job(store.all_tags)
+    tags = await hass.async_add_executor_job(store.all_tags, msg.get("drone"), msg.get("battery"))
     connection.send_result(msg["id"], {
         "flights": book.flights, "duration_s": book.duration_s, "distance_m": book.distance_m,
         "longest_flight_s": book.longest_flight_s, "farthest_flight_m": book.farthest_flight_m,

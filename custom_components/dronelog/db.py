@@ -379,9 +379,13 @@ class FlightStore:
             rows = conn.execute("SELECT sha256, text, tags_json FROM notes").fetchall()
         return {sha: FlightNote(text=text, tags=json.loads(tags)) for sha, text, tags in rows}
 
-    def all_tags(self) -> dict[str, int]:
+    def all_tags(self, drone: str | None = None, battery: str | None = None) -> dict[str, int]:
+        """Tag-Häufigkeiten; mit Filter nur Notizen vorhandener Flüge der gewählten Drohne/des Akkus."""
+        shas = {h.sha256 for h in self.flight_headers(drone, battery)} if (drone or battery) else None
         counts: dict[str, int] = {}
-        for note in self.notes().values():
+        for sha, note in self.notes().items():
+            if shas is not None and sha not in shas:
+                continue
             for tag in note.tags:
                 counts[tag] = counts.get(tag, 0) + 1
         return counts
