@@ -199,3 +199,74 @@ async def test_heatmap_and_cell_flights_accept_filters(hass, hass_ws_client, set
     assert [c["count"] for c in (await call(client, "heatmap", battery="B2"))["result"]["cells"]] == [1]
     flights = (await call(client, "cell_flights", lat=48.75, lon=12.4, drone="D2"))["result"]["flights"]
     assert [f["id"] for f in flights] == [2]
+
+
+# --- Erweiterungen (rein additiv) -----------------------------------------------------------------
+
+from dataclasses import replace  # noqa: E402
+
+from custom_components.dronelog.models import FlightEvent, FlightExtras  # noqa: E402
+
+
+def rich_flight(sha="a" * 64, **extras_kwargs):
+    samples = tuple(Sample(t=float(i), lat=48.75, lon=12.4, height=10.0, speed=0.0, voltage=8.0, current=3.0, charge=90,
+                           dist=float(i), dl=80, ul=70, rec=bool(i % 2), mode=4, temp=25.0, cell_dev=0.03, pitch=-3.0, roll=0.0,
+                           yaw=0.0) for i in range(12))
+    extras = FlightExtras(events=(FlightEvent(2.0, "lowGPS", 4.0), FlightEvent(5.0, "batteryGoHome", 0.0)), energy_wh=12.5,
+                          wh_per_km=40.0, max_distance_from_start_m=300.0, downlink_min=40, uplink_min=35, weak_signal_s=3.0,
+                          photo_count=3, video_s=20.0, max_descent_ms=2.0, max_climb_ms=3.0)
+    return replace(make_flight(sha=sha, samples=samples, battery_summary=make_battery(cell_deviation_max_v=0.03,
+                                                                                   internal_resistance_mohm=55.0)),
+                   extras=replace(extras, **extras_kwargs))
+
+
+async def test_flights_include_event_kinds_photo_count_video_and_filter_only_events(hass, hass_ws_client, setup_dronelog):
+    await add(hass, rich_flight("1" * 64), make_flight(sha="2" * 64, start=later(1)))
+    client = await hass_ws_client(hass)
+    result = (await call(client, "flights"))["result"]
+    plain, rich = result["flights"][0], result["flights"][1]
+    assert plain["event_kinds"] == [] and plain["photo_count"] == 0 and plain["video_s"] == 0
+    assert rich["event_kinds"] == ["lowGPS", "batteryGoHome"] and rich["photo_count"] == 3 and rich["video_s"] == 20.0
+    only = (await call(client, "flights", only_events=True))["result"]
+    assert only["total"] == 1 and [f["id"] for f in only["flights"]] == [1]
+
+
+async def test_flight_returns_extras_channels_resistance_and_analysis(hass, hass_ws_client, setup_dronelog):
+    await add(hass, rich_flight())
+    result = (await call(await hass_ws_client(hass), "flight", flight_id=1))["result"]
+    extras = result["extras"]
+    assert extras["energy_wh"] == 12.5 and extras["photo_count"] == 3 and extras["max_distance_from_start_m"] == 300.0
+    assert [(e["t"], e["kind"], e["value"]) for e in extras["events"]] == [(2.0, "lowGPS", 4.0), (5.0, "batteryGoHome", 0.0)]
+    point = result["points"][0]
+    for key in ("dist", "dl", "ul", "rec", "mode", "temp", "cell_dev", "pitch", "roll", "yaw"):
+        assert key in point
+    assert result["battery"]["internal_resistance_mohm"] == 55.0
+    analysis = result["analysis"]
+    assert analysis["phases"]["hover"] == 11.0
+    assert analysis["cell_level"] == "minor"
+    assert analysis["hover_wind"]["seconds"] == 11.0 and analysis["hover_wind"]["tilt_deg"] == 3.0
+    assert analysis["mode_segments"] == [{"category": "normal", "title": "Normal", "start": 0.0, "end": 11.0}]
+
+
+async def test_flight_hover_wind_uses_full_samples_not_thinned(hass, hass_ws_client, setup_dronelog):
+    samples = tuple(Sample(t=float(i), lat=48.75, lon=12.4, height=10.0, speed=0.0, voltage=8.0, current=3.0, charge=90,
+                           pitch=-2.0, roll=0.0, yaw=0.0) for i in range(2000))
+    await add(hass, make_flight(samples=samples))
+    result = (await call(await hass_ws_client(hass), "flight", flight_id=1))["result"]
+    assert len(result["points"]) == 600
+    assert result["analysis"]["hover_wind"]["seconds"] == 1999.0
+
+
+async def test_flight_without_extras_or_channels_stays_compatible(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight())
+    result = (await call(await hass_ws_client(hass), "flight", flight_id=1))["result"]
+    assert result["extras"] is None
+    assert result["analysis"]["hover_wind"] is None and result["analysis"]["mode_segments"] == []
+    assert set(result["points"][0]) == {"t", "lat", "lon", "height", "speed", "voltage", "current", "charge"}
+    assert "internal_resistance_mohm" in result["battery"]
+
+
+async def test_flight_without_samples_has_empty_analysis(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight(samples=()))
+    result = (await call(await hass_ws_client(hass), "flight", flight_id=1))["result"]
+    assert result["analysis"]["phases"] == {} and result["analysis"]["cell_level"] is None

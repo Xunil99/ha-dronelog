@@ -11,8 +11,13 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
+from .cell_levels import cell_deviation_level
 from .db import FlightStore
-from .models import BatteryPoint, BatterySummary, FlightRow, Sample
+from .events import event_severity
+from .flight_modes import flight_mode_segments
+from .flight_phases import flight_phase_durations
+from .hover_wind import hover_wind
+from .models import BatteryPoint, BatterySummary, FlightDetail, FlightExtras, FlightRow, Sample
 
 MAX_POINTS = 600
 UNKNOWN = "unbekannt"
@@ -29,6 +34,7 @@ def summary(row: FlightRow) -> dict[str, Any]:
         "drone_suffix": _suffix(row.drone_serial), "drone_serial": row.drone_serial,
         "battery_suffix": _suffix(row.battery_serial), "battery_serial": row.battery_serial,
         "temperature_c": row.temperature_c, "wind_10m_ms": row.wind_10m_ms, "has_position": row.has_position,
+        "event_kinds": list(row.event_kinds), "photo_count": row.photo_count, "video_s": row.video_s,
     }
 
 
@@ -40,9 +46,40 @@ def thin(samples: tuple[Sample, ...], maximum: int = MAX_POINTS) -> list[Sample]
     return [samples[round(i * step)] for i in range(maximum)]
 
 
+_CHANNELS = ("dist", "dl", "ul", "rec", "mode", "temp", "cell_dev", "pitch", "roll", "yaw")
+
+
 def _point(sample: Sample) -> dict[str, Any]:
-    return {"t": sample.t, "lat": sample.lat, "lon": sample.lon, "height": sample.height, "speed": sample.speed,
-            "voltage": sample.voltage, "current": sample.current, "charge": sample.charge}
+    point = {"t": sample.t, "lat": sample.lat, "lon": sample.lon, "height": sample.height, "speed": sample.speed,
+             "voltage": sample.voltage, "current": sample.current, "charge": sample.charge}
+    for name in _CHANNELS:  # Kanäle nur, wenn der Flug sie enthält (ältere Auswertungen: nicht vorhanden)
+        value = getattr(sample, name)
+        if value is not None:
+            point[name] = value
+    return point
+
+
+def _extras(extras: FlightExtras | None) -> dict[str, Any] | None:
+    if extras is None:
+        return None
+    result = asdict(extras)
+    result["events"] = [{"t": e.t, "kind": e.kind, "value": e.value, "severity": event_severity(e.kind)} for e in extras.events]
+    return result
+
+
+def _analysis(detail: FlightDetail) -> dict[str, Any]:
+    """Auswertungen aus den vollen (nicht ausgedünnten) Messpunkten."""
+    samples = detail.samples
+    wind = hover_wind(samples)
+    return {
+        "phases": {phase.value: seconds for phase, seconds in flight_phase_durations(samples).items()},
+        "hover_wind": ({"tilt_deg": wind.tilt_deg, "bearing_deg": wind.bearing_deg, "seconds": wind.seconds,
+                        "class": wind.wind_class.value} if wind else None),
+        "cell_level": (cell_deviation_level(detail.battery.cell_deviation_max_v).value
+                       if samples and battery_known(detail.battery) else None),
+        "mode_segments": [{"category": g.category.value, "title": g.category.title, "start": g.start, "end": g.end}
+                          for g in flight_mode_segments(samples)],
+    }
 
 
 def _history_point(point: BatteryPoint) -> dict[str, Any]:
@@ -79,10 +116,11 @@ def _command(schema: dict):
 
 @_command({vol.Optional("limit", default=50): vol.All(int, vol.Range(min=1, max=200)),
            vol.Optional("offset", default=0): vol.All(int, vol.Range(min=0)),
-           vol.Optional("drone"): str, vol.Optional("battery"): str, vol.Optional("since"): str})
+           vol.Optional("drone"): str, vol.Optional("battery"): str, vol.Optional("since"): str,
+           vol.Optional("only_events", default=False): bool})
 async def ws_flights(hass, connection, msg, store) -> None:
     since = datetime.fromisoformat(msg["since"]) if msg.get("since") else None
-    filters = {"drone": msg.get("drone"), "battery": msg.get("battery"), "since": since}
+    filters = {"drone": msg.get("drone"), "battery": msg.get("battery"), "since": since, "only_events": msg["only_events"]}
     rows = await hass.async_add_executor_job(lambda: store.list_flights(msg["limit"], msg["offset"], **filters))
     total = await hass.async_add_executor_job(lambda: store.count_flights(**filters))
     connection.send_result(msg["id"], {"flights": [summary(r) for r in rows], "total": total})
@@ -100,6 +138,7 @@ async def ws_flight(hass, connection, msg, store) -> None:
         "weather": asdict(detail.weather) if detail.weather else None,
         "start": position(detail.start_lat, detail.start_lon), "end": position(detail.end_lat, detail.end_lon),
         "points": [_point(s) for s in thin(detail.samples)], "source_name": detail.row.source_name,
+        "extras": _extras(detail.extras), "analysis": _analysis(detail),
     })
 
 
