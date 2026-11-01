@@ -12,8 +12,11 @@ from datetime import UTC, datetime, timedelta
 from pydjirecord import DJILog
 from pydjirecord.error import ApiError, ApiKeyError
 from pydjirecord.keychain import KeychainFeaturePoint
+from pydjirecord.utils import haversine_distance
 
+from .extras import compute_extras
 from .models import BatterySummary, ParsedFlight, Sample
+from .resistance import estimate_internal_resistance
 
 # Zellspannungs-Abweichungen darüber sind Messartefakte am Aufzeichnungsbeginn.
 MAX_PLAUSIBLE_CELL_DEVIATION_V = 0.5
@@ -67,7 +70,16 @@ def downsample(samples: Sequence[Sample], step_s: float = 2.0) -> tuple[Sample, 
 def _position(lat: float, lon: float) -> tuple[float | None, float | None]:
     if not (math.isfinite(lat) and math.isfinite(lon)) or (abs(lat) < 1e-6 and abs(lon) < 1e-6):
         return None, None
+    if abs(lat) > 90 or abs(lon) > 180:
+        return None, None  # kaputte Header/Frames: keine Position statt Müllkoordinaten
     return lat, lon
+
+
+def _tenth(value: float) -> float | None:
+    """Auf 0,1 gerundet (Halbwerte weg von Null wie in Swift); nicht endliche Werte gibt es in der Zeitreihe nicht."""
+    if not math.isfinite(value):
+        return None
+    return math.copysign(math.floor(abs(value) * 10 + 0.5) / 10, value) + 0.0
 
 
 MAX_CLOCK_DEVIATION = timedelta(days=1)
@@ -115,17 +127,29 @@ def _battery_summary(frames) -> BatterySummary:
         full_capacity_mah=max((b.full_capacity for b in batt), default=0),
         cycles=(last.number_of_discharges or None) if last else None,
         health_pct=(last.lifetime_remaining or None) if last else None,
+        internal_resistance_mohm=estimate_internal_resistance(frames),
     )
 
 
 def flight_from_frames(frames, details, sha256: str, log_version: int, keychains_json: str) -> ParsedFlight:
     if not frames:
         raise ParseError("Keine Datenpunkte in der Logdatei.")
+    positions_all = [_position(f.osd.latitude, f.osd.longitude) for f in frames]
+    origin = next((p for p in positions_all if p[0] is not None), None)
     samples = []
-    for frame in frames:
-        lat, lon = _position(frame.osd.latitude, frame.osd.longitude)
-        samples.append(Sample(t=frame.osd.fly_time, lat=lat, lon=lon, height=frame.osd.height, speed=frame.osd.h_speed,
-                              voltage=frame.battery.voltage, current=frame.battery.current, charge=frame.battery.charge_level))
+    for frame, (lat, lon) in zip(frames, positions_all, strict=True):
+        dist = haversine_distance(origin[0], origin[1], lat, lon) if origin and lat is not None else None
+        temperature = frame.battery.temperature
+        mode = frame.osd.flyc_state
+        samples.append(Sample(
+            t=frame.osd.fly_time, lat=lat, lon=lon, height=frame.osd.height, speed=frame.osd.h_speed,
+            voltage=frame.battery.voltage, current=frame.battery.current, charge=frame.battery.charge_level,
+            dist=dist, dl=frame.rc.downlink_signal, ul=frame.rc.uplink_signal, rec=bool(frame.camera.is_video),
+            mode=int(mode) if mode is not None else None,
+            temp=temperature if temperature != 0 and math.isfinite(temperature) else None,
+            cell_dev=None if frame.battery.is_cell_voltage_estimated or not math.isfinite(frame.battery.cell_voltage_deviation)
+            else frame.battery.cell_voltage_deviation,
+            pitch=_tenth(frame.osd.pitch), roll=_tenth(frame.osd.roll), yaw=_tenth(frame.osd.yaw)))
     positions = [(s.lat, s.lon) for s in samples if s.lat is not None]
     first_lat, first_lon = positions[0] if positions else (None, None)
     battery_sn = _clean_serial(details.battery_sn or next((f.recover.battery_sn for f in frames if f.recover.battery_sn), ""))
@@ -145,6 +169,7 @@ def flight_from_frames(frames, details, sha256: str, log_version: int, keychains
         battery=_battery_summary(frames),
         samples=downsample(samples),
         keychains_json=keychains_json,
+        extras=compute_extras(frames, frames[-1].osd.cumulative_distance),
     )
 
 
