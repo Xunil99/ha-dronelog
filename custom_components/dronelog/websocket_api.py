@@ -122,7 +122,7 @@ async def ws_batteries(hass, connection, msg, store) -> None:
         result = []
         for item in store.battery_list():
             result.append({"serial": item.serial, "suffix": _suffix(item.serial), "flights": item.flights,
-                           "first": item.first.isoformat(), "last": item.last.isoformat(),
+                           "first": item.first.isoformat(), "last": item.last.isoformat(), "drones": list(item.drones),
                            "history": [_history_point(p) for p in store.battery_history(item.serial)]})
         return result
 

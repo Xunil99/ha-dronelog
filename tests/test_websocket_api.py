@@ -169,3 +169,10 @@ async def test_batteries_history_skips_placeholder_battery_values(hass, hass_ws_
     battery = (await call(await hass_ws_client(hass), "batteries"))["result"]["batteries"][0]
     assert battery["flights"] == 2
     assert len(battery["history"]) == 1
+
+
+async def test_batteries_contain_the_drone_serials_they_flew_with(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight(sha="1" * 64, battery="B1", drone="D1", start=later(1)), make_flight(sha="2" * 64, battery="B2", drone="D2", start=later(2)))
+    batteries = {b["serial"]: b for b in (await call(await hass_ws_client(hass), "batteries"))["result"]["batteries"]}
+    assert batteries["B1"]["drones"] == ["D1"]
+    assert batteries["B2"]["drones"] == ["D2"]

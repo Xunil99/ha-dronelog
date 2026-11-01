@@ -146,10 +146,19 @@ export class FlightsView extends LitElement {
     }
   }
 
+  /** Akkus erscheinen nur, wenn die zugehörige Drohne links gewählt ist. */
+  private get batteryOptions(): BatteryDTO[] {
+    return this.droneFilter ? this.batteries.filter((b) => b.drones.includes(this.droneFilter)) : [];
+  }
+
   private onFilter(event: Event) {
     const select = event.target as HTMLSelectElement;
-    if (select.name === "drone") this.droneFilter = select.value;
-    else this.batteryFilter = select.value;
+    if (select.name === "drone") {
+      this.droneFilter = select.value;
+      this.batteryFilter = "";  // ein Akku einer anderen Drohne gilt nicht mehr
+    } else {
+      this.batteryFilter = select.value;
+    }
     void this.loadFlights(true);
   }
 
@@ -165,9 +174,9 @@ export class FlightsView extends LitElement {
           <option value="">${t("all_drones", l)}</option>
           ${this.drones.map((d) => html`<option value=${d.serial} ?selected=${d.serial === this.droneFilter}>${d.model} …${d.serial_suffix}</option>`)}
         </select>
-        <select name="battery" @change=${this.onFilter}>
+        <select name="battery" @change=${this.onFilter} ?disabled=${!this.droneFilter}>
           <option value="">${t("all_batteries", l)}</option>
-          ${this.batteries.map((b) => html`<option value=${b.serial} ?selected=${b.serial === this.batteryFilter}>…${b.suffix}</option>`)}
+          ${this.batteryOptions.map((b) => html`<option value=${b.serial} ?selected=${b.serial === this.batteryFilter}>…${b.suffix}</option>`)}
         </select>
       </div>
       <div class="list ${this.narrow ? "narrow" : ""}">

@@ -118,6 +118,7 @@ export interface BatteryHistoryPoint {
 export interface BatteryDTO {
   serial: string;
   suffix: string;
+  drones: string[];
   flights: number;
   first: string;
   last: string;

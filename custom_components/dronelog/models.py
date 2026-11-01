@@ -171,3 +171,4 @@ class BatteryListItem:
     first: datetime
     last: datetime
     latest: BatteryPoint | None
+    drones: tuple[str, ...] = ()

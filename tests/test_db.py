@@ -184,3 +184,12 @@ def test_flights_in_cell_returns_flights_touching_cell(store):
     store.add_flight(make_flight(sha="3" * 64, lat=49.5, lon=13.0, start=later(2)), None, "c")
     found = store.flights_in_cell(48.7500, 12.4000, 300)
     assert sorted(f.sha256[0] for f in found) == ["1", "2"]
+
+
+def test_battery_list_names_the_drones_each_battery_flew_with(store):
+    store.add_flight(make_flight(sha="1" * 64, battery="B1", drone="D1", start=later(1)), None, "a")
+    store.add_flight(make_flight(sha="2" * 64, battery="B1", drone="D2", start=later(2)), None, "b")
+    store.add_flight(make_flight(sha="3" * 64, battery="B2", drone="D2", start=later(3)), None, "c")
+    items = {b.serial: b for b in store.battery_list()}
+    assert sorted(items["B1"].drones) == ["D1", "D2"]
+    assert items["B2"].drones == ("D2",)

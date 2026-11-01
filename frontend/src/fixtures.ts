@@ -27,7 +27,7 @@ export function makeDetail(overrides: Partial<FlightDetailDTO> = {}, summary: Pa
 
 export function makeBattery(overrides: Partial<BatteryDTO> = {}): BatteryDTO {
   return {
-    serial: "BATTERY00H413", suffix: "H413", flights: 3, first: "2026-09-01T10:00:00+00:00", last: "2026-10-27T13:11:11+00:00",
+    serial: "BATTERY00H413", suffix: "H413", drones: ["DRONE0001D003"], flights: 3, first: "2026-09-01T10:00:00+00:00", last: "2026-10-27T13:11:11+00:00",
     history: [
       { flight_id: 1, time: "2026-09-01T10:00:00+00:00", charge_end: 80, cycles: 1, health_pct: 99, cell_deviation_mv: 2, temp_max_c: 30, avg_power_w: 40 },
       { flight_id: 2, time: "2026-10-01T10:00:00+00:00", charge_end: 78, cycles: 2, health_pct: 98, cell_deviation_mv: 3, temp_max_c: 31, avg_power_w: 41 },

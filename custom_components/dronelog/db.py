@@ -291,8 +291,11 @@ class FlightStore:
         items = []
         for serial, count, first, last in rows:
             history = self.battery_history(serial)
+            with self._connect() as conn:
+                drones = tuple(r[0] for r in conn.execute(
+                    "SELECT DISTINCT drone_serial FROM flights WHERE battery_serial=? ORDER BY drone_serial", (serial,)))
             items.append(BatteryListItem(serial=serial, flights=count, first=datetime.fromisoformat(first),
-                                         last=datetime.fromisoformat(last), latest=history[-1] if history else None))
+                                         last=datetime.fromisoformat(last), latest=history[-1] if history else None, drones=drones))
         return items
 
     def drone_list(self) -> list[DroneInfo]:

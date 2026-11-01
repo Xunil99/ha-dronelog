@@ -7919,9 +7919,12 @@ var ao = 50, oo = class extends je {
 			n === this.detailToken && (this.detail = void 0, this.detailError = !0);
 		}
 	}
+	get batteryOptions() {
+		return this.droneFilter ? this.batteries.filter((e) => e.drones.includes(this.droneFilter)) : [];
+	}
 	onFilter(e) {
 		let t = e.target;
-		t.name === "drone" ? this.droneFilter = t.value : this.batteryFilter = t.value, this.loadFlights(!0);
+		t.name === "drone" ? (this.droneFilter = t.value, this.batteryFilter = "") : this.batteryFilter = t.value, this.loadFlights(!0);
 	}
 	render() {
 		let e = this.language;
@@ -7933,9 +7936,9 @@ var ao = 50, oo = class extends je {
           <option value="">${W("all_drones", e)}</option>
           ${this.drones.map((e) => z`<option value=${e.serial} ?selected=${e.serial === this.droneFilter}>${e.model} …${e.serial_suffix}</option>`)}
         </select>
-        <select name="battery" @change=${this.onFilter}>
+        <select name="battery" @change=${this.onFilter} ?disabled=${!this.droneFilter}>
           <option value="">${W("all_batteries", e)}</option>
-          ${this.batteries.map((e) => z`<option value=${e.serial} ?selected=${e.serial === this.batteryFilter}>…${e.suffix}</option>`)}
+          ${this.batteryOptions.map((e) => z`<option value=${e.serial} ?selected=${e.serial === this.batteryFilter}>…${e.suffix}</option>`)}
         </select>
       </div>
       <div class="list ${this.narrow ? "narrow" : ""}">

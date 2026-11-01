@@ -231,3 +231,72 @@ describe("flights-view robustness", () => {
     expect(hass.callWS).toHaveBeenCalledWith(expect.objectContaining({ type: "dronelog/flight", flight_id: 2 }));
   });
 });
+
+describe("flights-view battery filter depends on the drone filter", () => {
+  function handler() {
+    const flights = [makeSummary({ id: 2 }), makeSummary({ id: 1 })];
+    const base = standardHandler(flights);
+    return (m: Record<string, unknown>) => {
+      if (m.type === "dronelog/stats") {
+        return { totals: { flights: 2, duration_s: 0, distance_m: 0 }, months: [], drones: [
+          { serial: "DRONE0001D003", serial_suffix: "D003", model: "DJI Neo", flights: 1, duration_s: 0 },
+          { serial: "DRONE0002D004", serial_suffix: "D004", model: "DJI Avata", flights: 1, duration_s: 0 }] };
+      }
+      if (m.type === "dronelog/batteries") {
+        return { batteries: [makeBattery({ serial: "BAT_NEO", suffix: "NEO1", drones: ["DRONE0001D003"] }),
+                              makeBattery({ serial: "BAT_AVATA", suffix: "AVA1", drones: ["DRONE0002D004"] }),
+                              makeBattery({ serial: "BAT_BOTH", suffix: "BOTH", drones: ["DRONE0001D003", "DRONE0002D004"] })] };
+      }
+      return base(m);
+    };
+  }
+  const batteryOptions = (el: HTMLElement) => [...el.shadowRoot!.querySelectorAll("select[name=battery] option")].map((o) => (o as HTMLOptionElement).value).filter(Boolean);
+  const chooseDrone = async (el: HTMLElement, value: string) => {
+    const select = el.shadowRoot!.querySelector("select[name=drone]") as HTMLSelectElement;
+    select.value = value;
+    select.dispatchEvent(new Event("change"));
+    await settle(el as never);
+  };
+
+  it("lists no batteries while 'all drones' is selected", async () => {
+    const el = await mount(makeHass(handler()));
+    expect(batteryOptions(el)).toEqual([]);
+  });
+
+  it("lists only the batteries of the selected drone", async () => {
+    const el = await mount(makeHass(handler()));
+    await chooseDrone(el, "DRONE0001D003");
+    expect(batteryOptions(el)).toEqual(["BAT_NEO", "BAT_BOTH"]);
+    await chooseDrone(el, "DRONE0002D004");
+    expect(batteryOptions(el)).toEqual(["BAT_AVATA", "BAT_BOTH"]);
+  });
+
+  it("resets the battery filter when another drone is chosen", async () => {
+    const hass = makeHass(handler());
+    const el = await mount(hass);
+    await chooseDrone(el, "DRONE0001D003");
+    const battery = el.shadowRoot!.querySelector("select[name=battery]") as HTMLSelectElement;
+    battery.value = "BAT_NEO";
+    battery.dispatchEvent(new Event("change"));
+    await settle(el as never);
+    hass.callWS.mockClear();
+    await chooseDrone(el, "DRONE0002D004");
+    const last = hass.callWS.mock.calls.filter((c) => (c[0] as Record<string, unknown>).type === "dronelog/flights").pop()![0] as Record<string, unknown>;
+    expect(last.drone).toBe("DRONE0002D004");
+    expect(last.battery).toBeUndefined();
+  });
+
+  it("drops the battery filter when going back to all drones", async () => {
+    const hass = makeHass(handler());
+    const el = await mount(hass);
+    await chooseDrone(el, "DRONE0001D003");
+    const battery = el.shadowRoot!.querySelector("select[name=battery]") as HTMLSelectElement;
+    battery.value = "BAT_NEO";
+    battery.dispatchEvent(new Event("change"));
+    await settle(el as never);
+    hass.callWS.mockClear();
+    await chooseDrone(el, "");
+    const last = hass.callWS.mock.calls.filter((c) => (c[0] as Record<string, unknown>).type === "dronelog/flights").pop()![0] as Record<string, unknown>;
+    expect(last.battery).toBeUndefined();
+  });
+});
