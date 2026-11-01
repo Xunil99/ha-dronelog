@@ -287,7 +287,7 @@ class FlightStore:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT b.serial, (SELECT COUNT(*) FROM flights f WHERE f.battery_serial=b.serial), b.first_seen, b.last_seen "
-                "FROM batteries b ORDER BY b.serial").fetchall()
+                "FROM batteries b WHERE EXISTS (SELECT 1 FROM flights f WHERE f.battery_serial=b.serial) ORDER BY b.serial").fetchall()
         items = []
         for serial, count, first, last in rows:
             history = self.battery_history(serial)

@@ -193,3 +193,10 @@ def test_battery_list_names_the_drones_each_battery_flew_with(store):
     items = {b.serial: b for b in store.battery_list()}
     assert sorted(items["B1"].drones) == ["D1", "D2"]
     assert items["B2"].drones == ("D2",)
+
+
+def test_battery_list_ignores_batteries_without_any_flight(store):
+    flight_id = store.add_flight(make_flight(sha="1" * 64, battery="OLD"), None, "a")
+    store.add_flight(make_flight(sha="2" * 64, battery="NEW", start=later(1)), None, "b")
+    store.delete_flight(flight_id)   # der Akku "OLD" bleibt in der Tabelle batteries zurück
+    assert [b.serial for b in store.battery_list()] == ["NEW"]
