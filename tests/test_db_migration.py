@@ -60,10 +60,10 @@ def test_migration_is_idempotent_on_reopen(tmp_path):
         assert conn.execute("SELECT end_lat FROM flights WHERE id=1").fetchone()[0] == 48.76
 
 
-def test_new_database_has_schema_version_2(tmp_path):
+def test_new_database_has_current_schema_version(tmp_path):
     FlightStore(tmp_path / "n.db")
     with sqlite3.connect(tmp_path / "n.db") as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert "end_lat" in {r[1] for r in conn.execute("PRAGMA table_info(flights)")}
 
 

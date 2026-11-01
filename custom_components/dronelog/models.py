@@ -139,6 +139,9 @@ class FlightRow:
     temperature_c: float | None
     wind_10m_ms: float | None
     has_position: bool = False
+    event_kinds: tuple[str, ...] = ()  # verschiedene Ereignisarten in Reihenfolge des ersten Auftretens
+    photo_count: int = 0
+    video_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -151,6 +154,8 @@ class FlightDetail:
     battery: BatterySummary
     weather: WeatherSummary | None
     samples: tuple[Sample, ...]
+    extras: FlightExtras | None = None
+    analysis_version: int = 1
 
 
 @dataclass(frozen=True)
@@ -172,6 +177,7 @@ class BatteryPoint:
     cell_deviation_max_v: float
     temp_max_c: float
     avg_power_w: float
+    internal_resistance_mohm: float | None = None
 
 
 @dataclass(frozen=True)
