@@ -40,6 +40,7 @@ export const DOC_CSS = `
 
 /** Nur für die Druckausgabe im eigenen Dokument (iframe): Seitenformat und feste Farben. */
 export const PRINT_PAGE_CSS = `
+  @media print { @page { size: A4; margin: 14mm 12mm; } }
   @page { size: A4; margin: 14mm 12mm; }
   html, body { margin: 0; background: #fff; }
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --doc-fg: #000; --doc-muted: #555; --doc-line: #bbb; --doc-tile: #eee; }
@@ -48,6 +49,15 @@ export const PRINT_PAGE_CSS = `
   .doc table { font-size: 9pt; }
   .doc .chart svg { max-height: 38mm; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+`;
+
+/** Für die Bildschirmdarstellung der Komponenten: beim Drucken der Seite selbst bleiben Knöpfe weg und Dokument-Farben fest. */
+export const SCREEN_PRINT_CSS = `
+  @media print {
+    .bar { display: none !important; }
+    :host { --doc-fg: #000; --doc-muted: #555; --doc-line: #bbb; --doc-tile: #eee; }
+    .card { border: none !important; padding: 0 !important; }
+  }
 `;
 
 const tiles = (items: { label: string; value: string }[]) =>

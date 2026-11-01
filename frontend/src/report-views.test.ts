@@ -5,7 +5,7 @@ import "./flight-note";
 import "./flightbook-view";
 import "./battery-report-view";
 import "./flight-detail";
-import { DOC_CSS, PRINT_PAGE_CSS, printDocument } from "./print-doc";
+import { DOC_CSS, PRINT_PAGE_CSS, SCREEN_PRINT_CSS, printDocument } from "./print-doc";
 import { html } from "lit";
 import { makeDetail, makeReport } from "./fixtures";
 import type { FlightbookDTO, MaintenanceRowDTO } from "./types";
@@ -45,7 +45,7 @@ describe("logbook-view", () => {
     expect(content).toContain("2026");
     expect(content).toContain("Wiese");
     expect(content).toContain("Unbenannter Ort");
-    expect(content).toContain("47,500, 11,000");
+    expect(content).toContain("47.500, 11.000");
     const tags = [...el.shadowRoot!.querySelectorAll("#tags-card .kv span")].map((s) => s.textContent);
     expect(tags).toEqual(["#Urlaub", "#Alpen"]);
   });
@@ -102,6 +102,8 @@ describe("flightbook and printing", () => {
   });
   it("has print styles for A4, repeated headers and unbroken rows", () => {
     expect(PRINT_PAGE_CSS).toContain("size: A4");
+    expect(PRINT_PAGE_CSS).toMatch(/@media print\s*\{\s*@page\s*\{\s*size: A4/);
+    expect(SCREEN_PRINT_CSS).toMatch(/@media print[\s\S]*\.bar\s*\{\s*display:\s*none/);
     expect(DOC_CSS).toMatch(/thead\s*\{\s*display:\s*table-header-group/);
     expect(DOC_CSS).toMatch(/tr\s*\{[^}]*break-inside:\s*avoid/);
   });

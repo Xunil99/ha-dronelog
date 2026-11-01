@@ -62,6 +62,20 @@ describe("dronelog-panel", () => {
     expect(analysis.report).toBe("BATTERY00H413");
     expect(current.callWS).toHaveBeenCalledWith({ type: "dronelog/battery_report", battery_serial: "BATTERY00H413" });
   });
+  it("can open the report of the same battery again from a flight after closing it", async () => {
+    const el = await mount();
+    for (let round = 0; round < 2; round++) {
+      tab(el, "Flüge").click();
+      for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 0)); await el.updateComplete; }
+      el.shadowRoot!.querySelector("dl-flights-view")!.dispatchEvent(new CustomEvent("open-battery-report", { detail: "BATTERY00H413", bubbles: true, composed: true }));
+      for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 0)); await el.updateComplete; }
+      const analysis = el.shadowRoot!.querySelector("dl-analysis-view") as HTMLElement & { report?: string };
+      expect(analysis.report).toBe("BATTERY00H413");
+      analysis.shadowRoot!.querySelector("dl-battery-report")!.dispatchEvent(new CustomEvent("close"));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(analysis.report).toBeUndefined();
+    }
+  });
   it("shows the menu button on narrow screens and fires hass-toggle-menu", async () => {
     const el = await mount(true);
     let fired = false;

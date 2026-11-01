@@ -74,17 +74,28 @@ describe("analysis-view", () => {
     await choose(el, "drone", "D2");
     expect((root(el).querySelector("dl-logbook-view") as HTMLElement & { battery: string }).battery).toBe("");
   });
-  it("opens the battery report from an event and returns with back", async () => {
+  it("opens the battery report from the battery history button, goes back, and can open the same report again", async () => {
     const { el } = await mount();
-    root(el).querySelector("dl-stats-view")!.dispatchEvent(new CustomEvent("open-battery-report", { detail: "BN", bubbles: true, composed: true }));
-    // das Ereignis steigt zum Panel auf; hier öffnet der Reiter den Bericht über openReport
+    const press = async () => {
+      const history = root(el).querySelector("dl-stats-view")!.shadowRoot!.querySelector("dl-battery-history") as El;
+      await tick(history);
+      (history.shadowRoot!.querySelector("button[data-report]") as HTMLButtonElement).click();
+      await tick(el);
+    };
+    for (let round = 0; round < 2; round++) {
+      await press();
+      const report = root(el).querySelector("dl-battery-report") as HTMLElement & { serial: string };
+      expect(report.serial).toBe("BN");
+      report.dispatchEvent(new CustomEvent("close"));
+      await tick(el);
+      expect(root(el).querySelector("dl-battery-report")).toBeNull();
+      expect(root(el).querySelector("dl-stats-view")).not.toBeNull();
+    }
+  });
+  it("opens a report given from outside (flight detail) via openReport", async () => {
+    const { el } = await mount();
     el.openReport = "BN";
     await tick(el);
-    const report = root(el).querySelector("dl-battery-report") as HTMLElement & { serial: string };
-    expect(report.serial).toBe("BN");
-    report.dispatchEvent(new CustomEvent("close"));
-    await tick(el);
-    expect(root(el).querySelector("dl-battery-report")).toBeNull();
-    expect(root(el).querySelector("dl-stats-view")).not.toBeNull();
+    expect((root(el).querySelector("dl-battery-report") as HTMLElement & { serial: string }).serial).toBe("BN");
   });
 });

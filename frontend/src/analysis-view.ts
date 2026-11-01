@@ -41,6 +41,11 @@ export class AnalysisView extends LitElement {
     this.battery = "";
     this.drones = [];
     this.batteries = [];
+    // Berichte aus der Akku-Auswertung öffnet dieser Reiter selbst (nicht über den Panel-Zustand, der bei gleichem Akku keine Änderung sähe)
+    this.addEventListener("open-battery-report", (event) => {
+      event.stopPropagation();
+      this.report = (event as CustomEvent<string>).detail;
+    });
   }
 
   static styles = [

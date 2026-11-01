@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { DroneLogApi } from "./api";
 import "./flightbook-view";
-import { formatDecimal, formatDistance, formatDuration, formatHeight, formatSpeedKmh } from "./format";
+import { formatDistance, formatDuration, formatHeight, formatSpeedKmh } from "./format";
 import { flightbookFilterText } from "./report-logic";
 import { t } from "./i18n";
 import { baseStyles } from "./styles";
@@ -174,7 +174,7 @@ export class LogbookView extends LitElement {
         ${g.places.length === 0 ? nothing : html`<div class="card" id="places-card">
           <h3>${t("places", l)}</h3>
           ${g.places.slice(0, PLACES_SHOWN).map((p) => html`<button class="place" data-key=${p.key} @click=${() => this.edit(p)}>
-            <span>${p.name ?? t("unnamed_place", l)}<small>${formatDecimal(p.lat, l, 3)}, ${formatDecimal(p.lon, l, 3)}</small></span>
+            <span>${p.name ?? t("unnamed_place", l)}<small>${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}</small></span>
             <b>${p.flights} · ${formatDuration(p.duration_s)}</b></button>`)}
           ${this.editing ? html`<form class="edit" @submit=${(e: Event) => { e.preventDefault(); void this.savePlace(); }}>
             <label for="place-name">${t("name_place", l)}</label>

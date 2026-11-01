@@ -1,5 +1,5 @@
 import { LitElement, css, html, unsafeCSS } from "lit";
-import { DOC_CSS, flightbookDoc, printDocument } from "./print-doc";
+import { DOC_CSS, SCREEN_PRINT_CSS, flightbookDoc, printDocument } from "./print-doc";
 import { flightbookView } from "./report-logic";
 import { t } from "./i18n";
 import { baseStyles } from "./styles";
@@ -25,6 +25,7 @@ export class FlightbookView extends LitElement {
   static styles = [
     baseStyles,
     unsafeCSS(DOC_CSS),
+    unsafeCSS(SCREEN_PRINT_CSS),
     css`
       .bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
       .paper { overflow-x: auto; }

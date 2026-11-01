@@ -9565,12 +9565,12 @@ var ks = 50, As = class extends Me {
 };
 customElements.define("dl-flights-view", As);
 // src/print-doc.ts
-var js = "\n  .doc { color: var(--doc-fg, var(--primary-text-color, #212121)); font-size: 13px; line-height: 1.35; }\n  .doc h1 { font-size: 20px; font-weight: 600; margin: 0 0 2px; }\n  .doc h2 { font-size: 14px; font-weight: 600; margin: 14px 0 4px; }\n  .doc .subtitle { color: var(--doc-muted, var(--secondary-text-color, #727272)); margin-bottom: 10px; }\n  .doc .tiles { display: flex; gap: 8px; margin: 8px 0 12px; }\n  .doc .tile { flex: 1; text-align: center; padding: 6px; border-radius: 6px; background: var(--doc-tile, rgba(128,128,128,0.12)); }\n  .doc .tile span { display: block; font-size: 11px; color: var(--doc-muted, var(--secondary-text-color, #727272)); }\n  .doc .tile b { font-size: 15px; font-weight: 600; }\n  .doc table { width: 100%; border-collapse: collapse; }\n  .doc th { text-align: left; font-size: 11px; font-weight: 600; color: var(--doc-muted, var(--secondary-text-color, #727272)); border-bottom: 2px solid var(--doc-line, #bbb); padding: 4px 6px; }\n  .doc td { border-bottom: 1px solid var(--doc-line, #ddd); padding: 4px 6px; vertical-align: top; }\n  .doc .right { text-align: right; }\n  .doc thead { display: table-header-group; }\n  .doc tr { break-inside: avoid; page-break-inside: avoid; }\n  .doc .empty { color: var(--doc-muted, var(--secondary-text-color, #727272)); margin: 12px 0; }\n  .doc .footnote { font-size: 11px; color: var(--doc-muted, var(--secondary-text-color, #727272)); margin-top: 14px; }\n  .doc .signature { margin-top: 36px; width: 240px; border-top: 1px solid var(--doc-fg, #000); padding-top: 3px; font-size: 11px; color: var(--doc-muted, #555); break-inside: avoid; }\n  .doc .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 16px; margin: 8px 0; }\n  .doc .chart { break-inside: avoid; }\n  .doc .chart h3 { font-size: 12px; font-weight: 600; margin: 0 0 2px; }\n  .doc .chart svg { width: 100%; height: auto; display: block; }\n  .doc .chart .none { color: var(--doc-muted, #727272); font-size: 11px; height: 60px; display: flex; align-items: center; }\n  .doc .axis { font-size: 9px; fill: var(--doc-muted, #727272); }\n  .doc .grid { stroke: var(--doc-line, #ddd); stroke-width: 0.6; }\n  .doc .figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 24px; }\n  .doc .fig { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; border-bottom: 1px dotted var(--doc-line, #ddd); }\n  .doc .fig span { color: var(--doc-muted, #727272); }\n  .doc .assessment { border-radius: 6px; padding: 8px 10px; margin: 12px 0; break-inside: avoid; border-left: 5px solid var(--level); background: color-mix(in srgb, var(--level) 12%, transparent); }\n  .doc .assessment b.head { display: block; font-size: 14px; }\n  .doc .assessment ul { margin: 4px 0 0; padding-left: 18px; }\n  .doc .symbol { color: var(--level); margin-right: 4px; }\n", Ms = "\n  @page { size: A4; margin: 14mm 12mm; }\n  html, body { margin: 0; background: #fff; }\n  body { font-family: system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif; --doc-fg: #000; --doc-muted: #555; --doc-line: #bbb; --doc-tile: #eee; }\n  .doc { font-size: 10pt; }\n  .doc h1 { font-size: 16pt; }\n  .doc table { font-size: 9pt; }\n  .doc .chart svg { max-height: 38mm; }\n  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }\n", Ns = (e) => B`<div class="tiles">${e.map((e) => B`<div class="tile"><span>${e.label}</span><b>${e.value}</b></div>`)}</div>`;
-function Ps(e, t, n) {
+var js = "\n  .doc { color: var(--doc-fg, var(--primary-text-color, #212121)); font-size: 13px; line-height: 1.35; }\n  .doc h1 { font-size: 20px; font-weight: 600; margin: 0 0 2px; }\n  .doc h2 { font-size: 14px; font-weight: 600; margin: 14px 0 4px; }\n  .doc .subtitle { color: var(--doc-muted, var(--secondary-text-color, #727272)); margin-bottom: 10px; }\n  .doc .tiles { display: flex; gap: 8px; margin: 8px 0 12px; }\n  .doc .tile { flex: 1; text-align: center; padding: 6px; border-radius: 6px; background: var(--doc-tile, rgba(128,128,128,0.12)); }\n  .doc .tile span { display: block; font-size: 11px; color: var(--doc-muted, var(--secondary-text-color, #727272)); }\n  .doc .tile b { font-size: 15px; font-weight: 600; }\n  .doc table { width: 100%; border-collapse: collapse; }\n  .doc th { text-align: left; font-size: 11px; font-weight: 600; color: var(--doc-muted, var(--secondary-text-color, #727272)); border-bottom: 2px solid var(--doc-line, #bbb); padding: 4px 6px; }\n  .doc td { border-bottom: 1px solid var(--doc-line, #ddd); padding: 4px 6px; vertical-align: top; }\n  .doc .right { text-align: right; }\n  .doc thead { display: table-header-group; }\n  .doc tr { break-inside: avoid; page-break-inside: avoid; }\n  .doc .empty { color: var(--doc-muted, var(--secondary-text-color, #727272)); margin: 12px 0; }\n  .doc .footnote { font-size: 11px; color: var(--doc-muted, var(--secondary-text-color, #727272)); margin-top: 14px; }\n  .doc .signature { margin-top: 36px; width: 240px; border-top: 1px solid var(--doc-fg, #000); padding-top: 3px; font-size: 11px; color: var(--doc-muted, #555); break-inside: avoid; }\n  .doc .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 16px; margin: 8px 0; }\n  .doc .chart { break-inside: avoid; }\n  .doc .chart h3 { font-size: 12px; font-weight: 600; margin: 0 0 2px; }\n  .doc .chart svg { width: 100%; height: auto; display: block; }\n  .doc .chart .none { color: var(--doc-muted, #727272); font-size: 11px; height: 60px; display: flex; align-items: center; }\n  .doc .axis { font-size: 9px; fill: var(--doc-muted, #727272); }\n  .doc .grid { stroke: var(--doc-line, #ddd); stroke-width: 0.6; }\n  .doc .figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 24px; }\n  .doc .fig { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; border-bottom: 1px dotted var(--doc-line, #ddd); }\n  .doc .fig span { color: var(--doc-muted, #727272); }\n  .doc .assessment { border-radius: 6px; padding: 8px 10px; margin: 12px 0; break-inside: avoid; border-left: 5px solid var(--level); background: color-mix(in srgb, var(--level) 12%, transparent); }\n  .doc .assessment b.head { display: block; font-size: 14px; }\n  .doc .assessment ul { margin: 4px 0 0; padding-left: 18px; }\n  .doc .symbol { color: var(--level); margin-right: 4px; }\n", Ms = "\n  @media print { @page { size: A4; margin: 14mm 12mm; } }\n  @page { size: A4; margin: 14mm 12mm; }\n  html, body { margin: 0; background: #fff; }\n  body { font-family: system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif; --doc-fg: #000; --doc-muted: #555; --doc-line: #bbb; --doc-tile: #eee; }\n  .doc { font-size: 10pt; }\n  .doc h1 { font-size: 16pt; }\n  .doc table { font-size: 9pt; }\n  .doc .chart svg { max-height: 38mm; }\n  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }\n", Ns = "\n  @media print {\n    .bar { display: none !important; }\n    :host { --doc-fg: #000; --doc-muted: #555; --doc-line: #bbb; --doc-tile: #eee; }\n    .card { border: none !important; padding: 0 !important; }\n  }\n", Ps = (e) => B`<div class="tiles">${e.map((e) => B`<div class="tile"><span>${e.label}</span><b>${e.value}</b></div>`)}</div>`;
+function Fs(e, t, n) {
 	return B`<div class="doc flightbook">
     <h1>${G("flightbook", n)}</h1>
     <div class="subtitle">${t}</div>
-    ${Ns(e.summary)}
+    ${Ps(e.summary)}
     ${e.rows.length === 0 ? B`<p class="empty">${G("flightbook_empty", n)}</p>` : B`<table>
           <thead><tr>${wt.map((e) => B`<th scope="col" class=${e.right ? "right" : ""}>${G(e.title, n)}</th>`)}</tr></thead>
           <tbody>${e.rows.map((e) => B`<tr>${wt.map((t) => B`<td class=${t.right ? "right" : ""}>${e[t.key]}</td>`)}</tr>`)}</tbody>
@@ -9579,7 +9579,7 @@ function Ps(e, t, n) {
     <div class="signature">${G("signature", n)}</div>
   </div>`;
 }
-function Fs(e, t, n) {
+function Is(e, t, n) {
 	let r = G(e.title, t), i = Wt(e, 320, 110, t);
 	if (!i) return B`<div class="chart"><h3>${r}</h3><div class="none">${G("too_few", t)}</div></div>`;
 	let a = Gt(e, t, n), o = e.ruleTitle ? G(e.ruleTitle, t) : "", s = e.points.map((e) => e.t), c = (e) => new Intl.DateTimeFormat(t, {
@@ -9603,12 +9603,12 @@ function Fs(e, t, n) {
       <text class="axis" x=${i.plot.right} y=${i.height - 4} text-anchor="end">${c(Math.max(...s))}</text>
     </svg></div>`;
 }
-function Is(e, t, n, r, i) {
+function Ls(e, t, n, r, i) {
 	return B`<div class="doc battery-report">
     <h1>${e.title}</h1>
     <div class="subtitle">${e.subtitle}</div>
-    ${Ns(e.tiles)}
-    <div class="charts">${t.map((e) => Fs(e, r, i))}</div>
+    ${Ps(e.tiles)}
+    <div class="charts">${t.map((e) => Is(e, r, i))}</div>
     <h2>${G("key_figures", r)}</h2>
     <div class="figures">${e.rows.map((e) => B`<div class="fig"><span>${e.label}</span><b>${e.value}</b></div>`)}</div>
     ${e.recent.length === 0 ? V : B`<h2>${G("recent_flights", r)}</h2>
@@ -9624,7 +9624,7 @@ function Is(e, t, n, r, i) {
     ${e.notes.map((e) => B`<p class="footnote">${e}</p>`)}
   </div>`;
 }
-function Ls(e, t, n = window) {
+function Rs(e, t, n = window) {
 	let r = n.document, i = r.createElement("iframe");
 	i.setAttribute("aria-hidden", "true"), i.tabIndex = -1, i.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden", r.body.appendChild(i);
 	let a = i.contentDocument, o = i.contentWindow;
@@ -9636,7 +9636,7 @@ function Ls(e, t, n = window) {
 	}, 50), !0;
 }
 // src/battery-report-view.ts
-var Rs = class extends Me {
+var zs = class extends Me {
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
@@ -9652,6 +9652,7 @@ var Rs = class extends Me {
 		this.styles = [
 			Zt,
 			m(js),
+			m(Ns),
 			h`
       .bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
       .paper { overflow-x: auto; }
@@ -9679,22 +9680,22 @@ var Rs = class extends Me {
 	}
 	content(e) {
 		let t = this.language;
-		return Is(J(e, t, this.timeZone), Ut(e.history), Bt(e.assessment, t), t, this.timeZone);
+		return Ls(J(e, t, this.timeZone), Ut(e.history), Bt(e.assessment, t), t, this.timeZone);
 	}
 	render() {
 		let e = this.language, t = this.report;
 		return B`
       <div class="bar">
         <button id="back" @click=${() => this.dispatchEvent(new CustomEvent("close"))}>← ${G("back", e)}</button>
-        ${t ? B`<button class="primary" id="print" @click=${() => Ls(this.content(t), J(t, e, this.timeZone).title)}>${G("print", e)}</button>` : V}
+        ${t ? B`<button class="primary" id="print" @click=${() => Rs(this.content(t), J(t, e, this.timeZone).title)}>${G("print", e)}</button>` : V}
       </div>
       ${this.error ? B`<p class="muted">${G("report_no_data", e)}</p>` : t ? B`<div class="card paper">${this.content(t)}</div>` : B`<p class="muted">${G("loading", e)}</p>`}
     `;
 	}
 };
-customElements.define("dl-battery-report", Rs);
+customElements.define("dl-battery-report", zs);
 // src/flightbook-view.ts
-var zs = class extends Me {
+var Bs = class extends Me {
 	static {
 		this.properties = {
 			book: { attribute: !1 },
@@ -9709,6 +9710,7 @@ var zs = class extends Me {
 		this.styles = [
 			Zt,
 			m(js),
+			m(Ns),
 			h`
       .bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
       .paper { overflow-x: auto; }
@@ -9716,7 +9718,7 @@ var zs = class extends Me {
 		];
 	}
 	get content() {
-		return Ps(St(this.book ?? {
+		return Fs(St(this.book ?? {
 			rows: [],
 			summary: {
 				flights: 0,
@@ -9726,7 +9728,7 @@ var zs = class extends Me {
 		}, this.lang), this.filterText, this.lang);
 	}
 	print() {
-		Ls(this.content, `${G("flightbook", this.lang)} ${this.filterText}`.trim());
+		Rs(this.content, `${G("flightbook", this.lang)} ${this.filterText}`.trim());
 	}
 	render() {
 		return B`
@@ -9738,9 +9740,9 @@ var zs = class extends Me {
     `;
 	}
 };
-customElements.define("dl-flightbook-view", zs);
+customElements.define("dl-flightbook-view", Bs);
 // src/logbook-view.ts
-var Bs = 15, Vs = class extends Me {
+var Vs = 15, Hs = class extends Me {
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
@@ -9874,8 +9876,8 @@ var Bs = 15, Vs = class extends Me {
         </div>`}
         ${t.places.length === 0 ? V : B`<div class="card" id="places-card">
           <h3>${G("places", e)}</h3>
-          ${t.places.slice(0, Bs).map((t) => B`<button class="place" data-key=${t.key} @click=${() => this.edit(t)}>
-            <span>${t.name ?? G("unnamed_place", e)}<small>${qe(t.lat, e, 3)}, ${qe(t.lon, e, 3)}</small></span>
+          ${t.places.slice(0, Vs).map((t) => B`<button class="place" data-key=${t.key} @click=${() => this.edit(t)}>
+            <span>${t.name ?? G("unnamed_place", e)}<small>${t.lat.toFixed(3)}, ${t.lon.toFixed(3)}</small></span>
             <b>${t.flights} · ${Re(t.duration_s)}</b></button>`)}
           ${this.editing ? B`<form class="edit" @submit=${(e) => {
 			e.preventDefault(), this.savePlace();
@@ -9896,9 +9898,9 @@ var Bs = 15, Vs = class extends Me {
       </div>`;
 	}
 };
-customElements.define("dl-logbook-view", Vs);
+customElements.define("dl-logbook-view", Hs);
 // src/maintenance-view.ts
-var Hs = class extends Me {
+var Us = class extends Me {
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
@@ -9999,8 +10001,8 @@ var Hs = class extends Me {
     </div>`;
 	}
 };
-customElements.define("dl-maintenance-card", Hs);
-var Us = class extends Me {
+customElements.define("dl-maintenance-card", Us);
+var Ws = class extends Me {
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
@@ -10033,9 +10035,9 @@ var Us = class extends Me {
       <div class="cards">${this.rows.map((e) => B`<dl-maintenance-card .hass=${this.hass} .row=${e}></dl-maintenance-card>`)}</div>`;
 	}
 };
-customElements.define("dl-maintenance-view", Us);
+customElements.define("dl-maintenance-view", Ws);
 // src/stats-logic.ts
-function Ws(e) {
+function Gs(e) {
 	if (e.length === 0) return [];
 	let t = new Map(e.map((e) => [e.month, e])), [n, r] = e[0].month.split("-").map(Number), [i, a] = e[e.length - 1].month.split("-").map(Number), o = [];
 	for (let e = n, s = r; e < i || e === i && s <= a;) {
@@ -10049,7 +10051,7 @@ function Ws(e) {
 	}
 	return o;
 }
-function Gs(e, t) {
+function Ks(e, t) {
 	let [n, r] = e.split("-").map(Number);
 	return new Intl.DateTimeFormat(t, {
 		month: "short",
@@ -10057,7 +10059,7 @@ function Gs(e, t) {
 		timeZone: "UTC"
 	}).format(new Date(Date.UTC(n, r - 1, 1)));
 }
-function Ks(e, t) {
+function qs(e, t) {
 	let n = /* @__PURE__ */ new Set();
 	for (let t of e) for (let e of t.history) n.add(Date.parse(e.time) / 1e3);
 	let r = [...n].sort((e, t) => e - t);
@@ -10072,12 +10074,12 @@ function Ks(e, t) {
 		})
 	};
 }
-function qs(e) {
+function Js(e) {
 	let t = e.history[e.history.length - 1];
 	return t !== void 0 && t.cell_deviation_mv > 20;
 }
 // src/battery-history.ts
-var Js = [
+var Ys = [
 	{
 		key: "health_pct",
 		label: "health"
@@ -10098,7 +10100,7 @@ var Js = [
 		key: "avg_power_w",
 		label: "power_avg"
 	}
-], Ys = [
+], Xs = [
 	"#1565c0",
 	"#ef6c00",
 	"#2e7d32",
@@ -10108,7 +10110,7 @@ var Js = [
 	"#4e342e",
 	"#546e7a",
 	"#9e9d24"
-], Xs = class extends Me {
+], Zs = class extends Me {
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
@@ -10162,11 +10164,11 @@ var Js = [
 		return B`<div class="card">
       <h3>${G("battery_history", e)}</h3>
       <div class="toolbar">
-        ${Js.map((t) => B`<button data-metric=${t.key} aria-pressed=${this.metric === t.key} @click=${() => this.metric = t.key}>${G(t.label, e)}</button>`)}
+        ${Ys.map((t) => B`<button data-metric=${t.key} aria-pressed=${this.metric === t.key} @click=${() => this.metric = t.key}>${G(t.label, e)}</button>`)}
       </div>
       <div id="plot"></div>
       <div class="legend">
-        ${this.visible.map((e, t) => B`<span class=${qs(e) ? "warn" : ""}><span class="dot" style="background:${qs(e) ? "#c62828" : Ys[t % Ys.length]}"></span>…${e.suffix} (${e.flights})${qs(e) ? " ⚠" : ""}</span>`)}
+        ${this.visible.map((e, t) => B`<span class=${Js(e) ? "warn" : ""}><span class="dot" style="background:${Js(e) ? "#c62828" : Xs[t % Xs.length]}"></span>…${e.suffix} (${e.flights})${Js(e) ? " ⚠" : ""}</span>`)}
       </div>
       <div class="reports">
         ${this.visible.map((t) => B`<button data-report=${t.serial} @click=${() => this.dispatchEvent(new CustomEvent("open-battery-report", {
@@ -10194,7 +10196,7 @@ var Js = [
 		this.rebuilds++, this.plot?.destroy(), this.plot = void 0;
 		let t = this.renderRoot.querySelector("#plot"), n = this.visible;
 		if (!t || n.length === 0 || !rs()) return;
-		let { x: r, series: i } = Ks(n, this.metric);
+		let { x: r, series: i } = qs(n, this.metric);
 		try {
 			this.plot = new ts({
 				width: t.clientWidth || 600,
@@ -10204,7 +10206,7 @@ var Js = [
 				axes: [{ grid: { stroke: "rgba(128,128,128,0.2)" } }, { grid: { stroke: "rgba(128,128,128,0.2)" } }],
 				series: [{}, ...n.map((e, t) => ({
 					label: `…${e.suffix}`,
-					stroke: qs(e) ? "#c62828" : Ys[t % Ys.length],
+					stroke: Js(e) ? "#c62828" : Xs[t % Xs.length],
 					width: 2,
 					spanGaps: !0,
 					points: { show: !0 }
@@ -10219,7 +10221,7 @@ var Js = [
 	}
 };
 // node_modules/leaflet.heat/dist/leaflet-heat.js
-customElements.define("dl-battery-history", Xs), (function() {
+customElements.define("dl-battery-history", Zs), (function() {
 	function e(t) {
 		return this instanceof e ? (this._canvas = t = typeof t == "string" ? document.getElementById(t) : t, this._ctx = t.getContext("2d"), this._width = t.width, this._height = t.height, this._max = 1, void this.clear()) : new e(t);
 	}
@@ -10334,7 +10336,7 @@ customElements.define("dl-battery-history", Xs), (function() {
 	return new L.HeatLayer(e, t);
 };
 // src/heatmap-view.ts
-var Zs = class extends Me {
+var Qs = class extends Me {
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
@@ -10446,9 +10448,9 @@ var Zs = class extends Me {
 		super.disconnectedCallback(), this.map?.remove(), this.map = void 0, this.heat = void 0;
 	}
 };
-customElements.define("dl-heatmap-view", Zs);
+customElements.define("dl-heatmap-view", Qs);
 // src/stats-view.ts
-var Qs = class extends Me {
+var $s = class extends Me {
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
@@ -10500,7 +10502,7 @@ var Qs = class extends Me {
 		let t = this.stats;
 		if (!t) return B`<p class="muted">${G("loading", e)}</p>`;
 		if (t.totals.flights === 0 && !this.drone && !this.battery) return B`<p class="muted">${G("no_flights", e)}</p>`;
-		let n = Ws(t.months), r = (e) => this.metric === "flights" ? e.flights : e.duration_s, i = Math.max(1, ...n.map(r)), a = (e) => this.metric === "flights" ? String(e.flights) : Re(e.duration_s);
+		let n = Gs(t.months), r = (e) => this.metric === "flights" ? e.flights : e.duration_s, i = Math.max(1, ...n.map(r)), a = (e) => this.metric === "flights" ? String(e.flights) : Re(e.duration_s);
 		return B`
       <section>
         <div class="tiles">
@@ -10513,10 +10515,10 @@ var Qs = class extends Me {
           <button data-metric="duration" aria-pressed=${this.metric === "duration"} @click=${() => this.metric = "duration"}>${G("metric_hours", e)}</button>
         </div>
         <div class="card bars">
-          ${n.map((t) => B`<div class="col" title=${`${Gs(t.month, e)}: ${a(t)}`}>
+          ${n.map((t) => B`<div class="col" title=${`${Ks(t.month, e)}: ${a(t)}`}>
               <span class="bar-label">${r(t) ? a(t) : V}</span>
               <div class="bar ${r(t) === 0 ? "empty" : ""}" style="height:${r(t) / i * 120}px"></div>
-              <span class="month">${Gs(t.month, e)}</span>
+              <span class="month">${Ks(t.month, e)}</span>
             </div>`)}
         </div>
       </section>
@@ -10530,9 +10532,9 @@ var Qs = class extends Me {
     `;
 	}
 };
-customElements.define("dl-stats-view", Qs);
+customElements.define("dl-stats-view", $s);
 // src/analysis-view.ts
-var $s = class extends Me {
+var ec = class extends Me {
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
@@ -10547,7 +10549,9 @@ var $s = class extends Me {
 		};
 	}
 	constructor() {
-		super(), this.tileUrl = "", this.section = "stats", this.drone = "", this.battery = "", this.drones = [], this.batteries = [];
+		super(), this.tileUrl = "", this.section = "stats", this.drone = "", this.battery = "", this.drones = [], this.batteries = [], this.addEventListener("open-battery-report", (e) => {
+			e.stopPropagation(), this.report = e.detail;
+		});
 	}
 	static {
 		this.styles = [Zt, h`
@@ -10626,9 +10630,9 @@ var $s = class extends Me {
     `;
 	}
 };
-customElements.define("dl-analysis-view", $s);
+customElements.define("dl-analysis-view", ec);
 // src/dronelog-panel.ts
-var ec = class extends Me {
+var tc = class extends Me {
 	static {
 		this.properties = {
 			hass: { attribute: !1 },
@@ -10686,5 +10690,5 @@ var ec = class extends Me {
     `;
 	}
 };
-customElements.define("dronelog-panel", ec);
-export { ec as DroneLogPanel };
+customElements.define("dronelog-panel", tc);
+export { tc as DroneLogPanel };
