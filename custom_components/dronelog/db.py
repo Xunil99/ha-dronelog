@@ -216,6 +216,11 @@ class FlightStore:
                          (json.dumps(asdict(flight.battery)), extras_to_json(flight.extras), ANALYSIS_VERSION, flight_id))
             return True
 
+    def mark_analysis_current(self, sha256: str) -> None:
+        """Setzt die Auswertungsversion, ohne Daten zu ändern (offline nicht neu auswertbar und nicht nötig)."""
+        with self._lock, self._connect() as conn:
+            conn.execute("UPDATE flights SET analysis_version=? WHERE sha256=?", (ANALYSIS_VERSION, sha256))
+
     @staticmethod
     def _end_position(flight: ParsedFlight) -> tuple[float | None, float | None]:
         positioned = [s for s in flight.samples if s.lat is not None and s.lon is not None]
