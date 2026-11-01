@@ -227,3 +227,21 @@ class BatteryListItem:
     last: datetime
     latest: BatteryPoint | None
     drones: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FlightHeader:
+    """Kopfdaten eines Flugs für Logbuch, Flugbuch und Wartung (ohne Zeitreihe)."""
+
+    flight_id: int
+    sha256: str
+    start: datetime
+    duration_s: float
+    distance_m: float
+    max_height_m: float
+    max_speed_ms: float
+    drone_serial: str
+    drone_model: str
+    battery_serial: str
+    start_lat: float | None
+    start_lon: float | None

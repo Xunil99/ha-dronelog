@@ -101,11 +101,19 @@
       },
       "drone_flight_time": {
         "name": "Flight time"
+      },
+      "hours_since_service": {
+        "name": "Flight hours since service"
       }
     },
     "event": {
       "new_flight": {
         "name": "New flight"
+      }
+    },
+    "binary_sensor": {
+      "maintenance_due": {
+        "name": "Maintenance due"
       }
     }
   }

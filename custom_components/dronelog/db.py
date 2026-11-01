@@ -11,6 +11,12 @@ from dataclasses import asdict, fields
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .battery_report import BatteryReportData, FlightInput, build_battery_report
+from .flightbook import FlightbookEntry, entry_from_header
+from .grid import heat_cell, heat_cell_center
+from .logbook import Logbook, build_logbook
+from .maintenance import MaintenancePlan
+from .notes import FlightNote
 from .models import (
     BatteryInfo,
     BatteryListItem,
@@ -21,6 +27,7 @@ from .models import (
     FlightDetail,
     FlightEvent,
     FlightExtras,
+    FlightHeader,
     FlightRow,
     HeatCell,
     MonthStat,
@@ -57,6 +64,10 @@ CREATE TABLE IF NOT EXISTS samples (
   dist REAL, dl INTEGER, ul INTEGER, rec INTEGER, mode INTEGER, temp REAL, cell_dev REAL, pitch REAL, roll REAL, yaw REAL,
   PRIMARY KEY (flight_id, t));
 CREATE TABLE IF NOT EXISTS keychains (sha256 TEXT PRIMARY KEY, json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS notes (sha256 TEXT PRIMARY KEY, text TEXT NOT NULL, tags_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS place_names (key TEXT PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS maintenance_plans (
+  drone_serial TEXT PRIMARY KEY, interval_hours REAL, interval_flights INTEGER, since TEXT NOT NULL, notified_due INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS idx_flights_start ON flights(start_utc);
 CREATE INDEX IF NOT EXISTS idx_flights_battery ON flights(battery_serial);
 """
@@ -327,18 +338,114 @@ class FlightStore:
                                        internal_resistance_mohm=b.get("internal_resistance_mohm")))
         return points
 
+    # --- Kopfdaten, Notizen, Ortsnamen, Logbuch ---------------------------------------------------------------------
+
+    def flight_headers(self, drone: str | None = None, battery: str | None = None) -> list[FlightHeader]:
+        """Alle Flüge (ohne Limit), ältester zuerst; optional nach Drohne und/oder Akku gefiltert."""
+        where, args = [], []
+        if drone:
+            where.append("f.drone_serial=?"); args.append(drone)
+        if battery:
+            where.append("f.battery_serial=?"); args.append(battery)
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT f.id, f.sha256, f.start_utc, f.duration_s, f.distance_m, f.max_height_m, f.max_speed_ms, f.drone_serial, "
+                f"COALESCE(d.model, ''), f.battery_serial, f.start_lat, f.start_lon {_FLIGHT_FROM} {clause} ORDER BY f.start_utc, f.id", args).fetchall()
+        return [FlightHeader(r[0], r[1], datetime.fromisoformat(r[2]), *r[3:]) for r in rows]
+
+    def sha_for_flight(self, flight_id: int) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT sha256 FROM flights WHERE id=?", (flight_id,)).fetchone()
+        return row[0] if row else None
+
+    def get_note(self, sha256: str) -> FlightNote:
+        with self._connect() as conn:
+            row = conn.execute("SELECT text, tags_json FROM notes WHERE sha256=?", (sha256,)).fetchone()
+        return FlightNote(text=row[0], tags=json.loads(row[1])) if row else FlightNote()
+
+    def set_note(self, sha256: str, note: FlightNote) -> None:
+        """Eine leere Notiz wird nicht gespeichert (bestehende wird entfernt). Schlüssel ist der Log-Hash und überlebt Neuauswertungen."""
+        with self._lock, self._connect() as conn:
+            if note.is_empty:
+                conn.execute("DELETE FROM notes WHERE sha256=?", (sha256,))
+            else:
+                conn.execute("INSERT INTO notes(sha256, text, tags_json) VALUES (?,?,?) "
+                             "ON CONFLICT(sha256) DO UPDATE SET text=excluded.text, tags_json=excluded.tags_json",
+                             (sha256, note.text, json.dumps(note.tags)))
+
+    def notes(self) -> dict[str, FlightNote]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT sha256, text, tags_json FROM notes").fetchall()
+        return {sha: FlightNote(text=text, tags=json.loads(tags)) for sha, text, tags in rows}
+
+    def all_tags(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for note in self.notes().values():
+            for tag in note.tags:
+                counts[tag] = counts.get(tag, 0) + 1
+        return counts
+
+    def place_names(self) -> dict[str, str]:
+        with self._connect() as conn:
+            return dict(conn.execute("SELECT key, name FROM place_names").fetchall())
+
+    def set_place_name(self, key: str, name: str) -> str | None:
+        """Leerer Name entfernt den Eintrag. Gibt den gespeicherten (getrimmten) Namen zurück."""
+        trimmed = name.strip()
+        with self._lock, self._connect() as conn:
+            if trimmed:
+                conn.execute("INSERT INTO place_names(key, name) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET name=excluded.name", (key, trimmed))
+            else:
+                conn.execute("DELETE FROM place_names WHERE key=?", (key,))
+        return trimmed or None
+
+    def flightbook_entries(self, drone: str | None = None, battery: str | None = None, year: int | None = None, tz=UTC) -> list[FlightbookEntry]:
+        """Flüge für das Flugbuch, ältester zuerst; Kalenderjahr in Ortszeit `tz`."""
+        headers = self.flight_headers(drone, battery)
+        if year is not None:
+            headers = [h for h in headers if h.start.astimezone(tz).year == year]
+        return [entry_from_header(h) for h in headers]
+
+    # --- Wartungspläne -----------------------------------------------------------------------------------------------
+
+    def plans(self) -> dict:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT drone_serial, interval_hours, interval_flights, since, notified_due FROM maintenance_plans").fetchall()
+        return {r[0]: MaintenancePlan(r[0], r[1], r[2], datetime.fromisoformat(r[3]), bool(r[4])) for r in rows}
+
+    def save_plan(self, plan) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "INSERT INTO maintenance_plans(drone_serial, interval_hours, interval_flights, since, notified_due) VALUES (?,?,?,?,?) "
+                "ON CONFLICT(drone_serial) DO UPDATE SET interval_hours=excluded.interval_hours, interval_flights=excluded.interval_flights, "
+                "since=excluded.since, notified_due=excluded.notified_due",
+                (plan.drone_serial, plan.interval_hours, plan.interval_flights, _iso(plan.since), int(plan.notified_due)))
+
+    def delete_plan(self, drone_serial: str) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM maintenance_plans WHERE drone_serial=?", (drone_serial,))
+
+    def logbook(self, drone: str | None = None, battery: str | None = None, tz=UTC) -> Logbook:
+        return build_logbook(self.flight_headers(drone, battery), tz)
+
+    def battery_report(self, serial: str) -> BatteryReportData | None:
+        """Kennzahlen eines Akkus über alle seine Flüge (ohne Limit); None ohne echte Akkuwerte."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT f.id, f.start_utc, f.duration_s, f.distance_m, COALESCE(d.model, ''), f.battery_json, f.extras_json {_FLIGHT_FROM} "
+                "WHERE f.battery_serial=? ORDER BY f.start_utc, f.id", (serial,)).fetchall()
+        flights = [FlightInput(flight_id=i, start=datetime.fromisoformat(start), duration_s=dur, distance_m=dist, drone_model=model,
+                               battery=battery_from_json(bj), extras=extras_from_json(ej)) for i, start, dur, dist, model, bj, ej in rows]
+        return build_battery_report(serial, flights)
+
     @staticmethod
     def _cell(lat: float, lon: float, precision_m: int) -> tuple[int, int]:
-        lat_step = precision_m / 111_320
-        lat_i = round(lat / lat_step)
-        lon_step = lat_step / max(math.cos(math.radians(lat_i * lat_step)), 0.01)  # Zellbreite aus der Zellmitte
-        return lat_i, round(lon / lon_step)
+        return heat_cell(lat, lon, precision_m)
 
     @staticmethod
     def _cell_center(cell: tuple[int, int], precision_m: int) -> tuple[float, float]:
-        lat_step = precision_m / 111_320
-        lat = cell[0] * lat_step
-        return lat, cell[1] * lat_step / max(math.cos(math.radians(lat)), 0.01)
+        return heat_cell_center(cell, precision_m)
 
     def _positions(self, conn, drone: str | None = None, battery: str | None = None) -> list[tuple[int, float | None, float | None, float | None, float | None]]:
         where, args = [], []

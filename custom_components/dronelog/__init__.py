@@ -26,7 +26,7 @@ from .websocket_api import async_register_commands
 from .view import DroneLogPingView, DroneLogUploadView
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS = ["sensor", "event"]
+PLATFORMS = ["sensor", "binary_sensor", "event"]
 RETRY_INTERVAL = timedelta(hours=1)
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 _VIEWS_KEY = f"{DOMAIN}_views_registered"

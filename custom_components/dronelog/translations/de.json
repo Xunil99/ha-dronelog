@@ -101,11 +101,19 @@
       },
       "drone_flight_time": {
         "name": "Flugzeit"
+      },
+      "hours_since_service": {
+        "name": "Flugstunden seit Wartung"
       }
     },
     "event": {
       "new_flight": {
         "name": "Neuer Flug"
+      }
+    },
+    "binary_sensor": {
+      "maintenance_due": {
+        "name": "Wartung fällig"
       }
     }
   }

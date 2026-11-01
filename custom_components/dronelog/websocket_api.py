@@ -3,23 +3,30 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+import re
+from datetime import datetime, tzinfo
 from typing import Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
+from .battery_report import BatteryAssessment, BatteryReportData, Finding, assess
 from .cell_levels import cell_deviation_level
 from .db import FlightStore
 from .events import event_severity
+from .flightbook import build_flightbook
 from .flight_modes import flight_mode_segments
 from .flight_phases import flight_phase_durations
 from .hover_wind import hover_wind
+from .notes import MAX_NOTE_LENGTH, MAX_PLACE_NAME_LENGTH, FlightNote, parse_tags
+from .maintenance import MaintenanceRow, async_dismiss_notification, mark_serviced, maintenance_rows, set_plan
 from .models import BatteryPoint, BatterySummary, FlightDetail, FlightExtras, FlightRow, Sample
 
 MAX_POINTS = 600
+_PLACE_KEY = re.compile(r"^-?\d{1,9},-?\d{1,9}$")
 UNKNOWN = "unbekannt"
 
 
@@ -93,6 +100,11 @@ def battery_known(battery: BatterySummary) -> bool:
     return any((battery.charge_start, battery.charge_end, battery.full_capacity_mah, battery.peak_power_w, battery.avg_power_w))
 
 
+def local_tz(hass: HomeAssistant) -> tzinfo:
+    """Zeitzone der HA-Instanz (Jahre, Datum und Uhrzeit im Logbuch/Flugbuch sind Ortszeit)."""
+    return dt_util.get_time_zone(hass.config.time_zone) or dt_util.UTC
+
+
 def _store(hass: HomeAssistant, connection, msg) -> FlightStore | None:
     data = hass.data.get(DOMAIN)
     if not data:
@@ -155,6 +167,31 @@ async def ws_stats(hass, connection, msg, store) -> None:
     })
 
 
+def _finding(finding: Finding) -> dict[str, Any]:
+    return {"code": finding.code, "text": finding.text, "params": finding.params}
+
+
+def battery_report_dict(report: BatteryReportData, assessment: BatteryAssessment) -> dict[str, Any]:
+    result = asdict(report)
+    result.pop("history")
+    result.update(
+        drone_models=list(report.drone_models), first_use=report.first_use.isoformat(), last_use=report.last_use.isoformat(),
+        cycles_added=report.cycles_added, health_loss_pct=report.health_loss_pct,
+        history=[{**asdict(h), "start": h.start.isoformat()} for h in report.history],
+        assessment={"level": assessment.level, "headline_code": assessment.headline_code, "headline": assessment.headline,
+                    "state_of_health": _finding(assessment.state_of_health), "points": [_finding(p) for p in assessment.points]})
+    return result
+
+
+@_command({vol.Required("battery_serial"): str})
+async def ws_battery_report(hass, connection, msg, store) -> None:
+    report = await hass.async_add_executor_job(store.battery_report, msg["battery_serial"])
+    if report is None:
+        connection.send_error(msg["id"], "not_found", "Für diesen Akku liegen keine Messwerte vor.")
+        return
+    connection.send_result(msg["id"], battery_report_dict(report, assess(report)))
+
+
 @_command({vol.Optional("drone"): str})
 async def ws_batteries(hass, connection, msg, store) -> None:
     def load():
@@ -183,6 +220,121 @@ async def ws_cell_flights(hass, connection, msg, store) -> None:
     connection.send_result(msg["id"], {"flights": [summary(r) for r in rows]})
 
 
+def _note_dict(flight_id: int, note: FlightNote) -> dict[str, Any]:
+    return {"flight_id": flight_id, "text": note.text, "tags": note.tags}
+
+
+@_command({vol.Required("flight_id"): int})
+async def ws_note_get(hass, connection, msg, store) -> None:
+    def load():
+        sha = store.sha_for_flight(msg["flight_id"])
+        return None if sha is None else store.get_note(sha)
+
+    note = await hass.async_add_executor_job(load)
+    if note is None:
+        connection.send_error(msg["id"], "not_found", "Flug nicht gefunden.")
+        return
+    connection.send_result(msg["id"], _note_dict(msg["flight_id"], note))
+
+
+@_command({vol.Required("flight_id"): int, vol.Optional("text", default=""): vol.All(str, vol.Length(max=MAX_NOTE_LENGTH)),
+           vol.Optional("tags", default=""): vol.Any(str, [str])})
+async def ws_note_set(hass, connection, msg, store) -> None:
+    raw_tags = msg["tags"] if isinstance(msg["tags"], str) else ",".join(msg["tags"])
+    note = FlightNote(text=msg["text"], tags=parse_tags(raw_tags))
+
+    def save():
+        sha = store.sha_for_flight(msg["flight_id"])
+        if sha is None:
+            return False
+        store.set_note(sha, note)
+        return True
+
+    if not await hass.async_add_executor_job(save):
+        connection.send_error(msg["id"], "not_found", "Flug nicht gefunden.")
+        return
+    stored = note if not note.is_empty else FlightNote()
+    connection.send_result(msg["id"], _note_dict(msg["flight_id"], stored))
+
+
+@_command({vol.Required("key"): vol.Match(_PLACE_KEY), vol.Required("name"): vol.All(str, vol.Length(max=MAX_PLACE_NAME_LENGTH))})
+async def ws_place_name_set(hass, connection, msg, store) -> None:
+    name = await hass.async_add_executor_job(store.set_place_name, msg["key"], msg["name"])
+    connection.send_result(msg["id"], {"key": msg["key"], "name": name})
+
+
+@_command({vol.Optional("drone"): str, vol.Optional("battery"): str})
+async def ws_logbook(hass, connection, msg, store) -> None:
+    tz = local_tz(hass)
+    book = await hass.async_add_executor_job(lambda: store.logbook(msg.get("drone"), msg.get("battery"), tz))
+    names = await hass.async_add_executor_job(store.place_names)
+    tags = await hass.async_add_executor_job(store.all_tags)
+    connection.send_result(msg["id"], {
+        "flights": book.flights, "duration_s": book.duration_s, "distance_m": book.distance_m,
+        "longest_flight_s": book.longest_flight_s, "farthest_flight_m": book.farthest_flight_m,
+        "highest_m": book.highest_m, "fastest_ms": book.fastest_ms,
+        "years": [asdict(y) for y in book.years],
+        "places": [{**asdict(p), "name": names.get(p.key)} for p in book.places],
+        "tags": tags,
+    })
+
+
+@_command({vol.Optional("drone"): str, vol.Optional("battery"): str, vol.Optional("year"): vol.All(int, vol.Range(min=1970, max=3000))})
+async def ws_flightbook(hass, connection, msg, store) -> None:
+    tz = local_tz(hass)
+
+    def load():
+        entries = store.flightbook_entries(msg.get("drone"), msg.get("battery"), msg.get("year"), tz)
+        return build_flightbook(entries, store.place_names(), store.notes(), tz)
+
+    connection.send_result(msg["id"], await hass.async_add_executor_job(load))
+
+
+def maintenance_dict(row: MaintenanceRow) -> dict[str, Any]:
+    plan, status = row.plan, row.status
+    return {
+        "serial": row.serial, "suffix": _suffix(row.serial), "name": row.name, "model": row.model,
+        "plan": None if plan is None else {"interval_hours": plan.interval_hours, "interval_flights": plan.interval_flights,
+                                           "since": plan.since.isoformat(), "notified_due": plan.notified_due},
+        "status": None if status is None else asdict(status),
+    }
+
+
+async def _maintenance_result(hass: HomeAssistant, serial: str) -> dict[str, Any]:
+    """Aktualisiert Entitäten und Benachrichtigung und liefert die Zeile der Drohne."""
+    await hass.data[DOMAIN]["coordinator"].async_refresh()
+    rows = hass.data[DOMAIN]["coordinator"].maintenance_rows
+    row = next((r for r in rows if r.serial == serial), MaintenanceRow(serial, serial, "", None, None))
+    return maintenance_dict(row)
+
+
+@_command({})
+async def ws_maintenance_get(hass, connection, msg, store) -> None:
+    rows = await hass.async_add_executor_job(maintenance_rows, store)
+    connection.send_result(msg["id"], {"drones": [maintenance_dict(r) for r in rows]})
+
+
+@_command({vol.Required("drone"): str,
+           vol.Optional("interval_hours"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0.0, min_included=False, max=100_000))),
+           vol.Optional("interval_flights"): vol.Any(None, vol.All(int, vol.Range(min=1, max=1_000_000)))})
+async def ws_maintenance_set(hass, connection, msg, store) -> None:
+    """Beide Intervalle weggelassen/null = Wartungsüberwachung aus. Ein geändertes Intervall meldet „fällig“ neu."""
+    await hass.async_add_executor_job(set_plan, store, msg["drone"], msg.get("interval_hours"), msg.get("interval_flights"), dt_util.utcnow())
+    connection.send_result(msg["id"], await _maintenance_result(hass, msg["drone"]))
+
+
+@_command({vol.Required("drone"): str})
+async def ws_maintenance_serviced(hass, connection, msg, store) -> None:
+    plan = await hass.async_add_executor_job(mark_serviced, store, msg["drone"], dt_util.utcnow())
+    if plan is None:
+        connection.send_error(msg["id"], "not_found", "Für diese Drohne ist kein Wartungsplan eingerichtet.")
+        return
+    async_dismiss_notification(hass, msg["drone"])
+    connection.send_result(msg["id"], await _maintenance_result(hass, msg["drone"]))
+
+
 def async_register_commands(hass: HomeAssistant) -> None:
-    for handler in (ws_flights, ws_flight, ws_stats, ws_batteries, ws_heatmap, ws_cell_flights):
+    for handler in (ws_flights, ws_flight, ws_stats, ws_batteries, ws_heatmap, ws_cell_flights, ws_battery_report,
+                    ws_note_get, ws_note_set, ws_place_name_set, ws_logbook, ws_flightbook,
+                    ws_maintenance_get, ws_maintenance_set, ws_maintenance_serviced):
         websocket_api.async_register_command(hass, handler)
