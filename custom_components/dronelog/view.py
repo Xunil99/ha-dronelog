@@ -10,8 +10,10 @@ from http import HTTPStatus
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from . import const
+from .export import FORMATS, RENDERERS, file_name, has_positions
 from .storage import RawLogStore
 
 
@@ -79,3 +81,32 @@ class DroneLogPingView(HomeAssistantView):
         if not _authorised(domain_data, request):
             return _error("unauthorized", HTTPStatus.UNAUTHORIZED)
         return web.json_response({"status": "ok", "app": "dronelog"})
+
+
+class DroneLogExportView(HomeAssistantView):
+    """GET /api/dronelog/export/{flight_id}/{fmt} (csv, gpx, kml); angemeldet und nur für Administratoren."""
+
+    url = "/api/dronelog/export/{flight_id}/{fmt}"
+    name = "api:dronelog:export"
+
+    async def get(self, request: web.Request, flight_id: str, fmt: str) -> web.Response:
+        hass: HomeAssistant = request.app["hass"]
+        user = request.get("hass_user")
+        if user is None or not user.is_admin:
+            return _error("Nur für Administratoren", HTTPStatus.FORBIDDEN)
+        domain_data = hass.data.get(const.DOMAIN)
+        if not domain_data:
+            return _error("Integration nicht aktiv", HTTPStatus.SERVICE_UNAVAILABLE)
+        if fmt not in FORMATS:
+            return _error("Unbekanntes Format (csv, gpx oder kml)", HTTPStatus.BAD_REQUEST)
+        if not flight_id.isdigit():
+            return _error("Flug nicht gefunden", HTTPStatus.NOT_FOUND)
+        detail = await hass.async_add_executor_job(domain_data["db"].get_flight, int(flight_id))
+        if detail is None:
+            return _error("Flug nicht gefunden", HTTPStatus.NOT_FOUND)
+        if fmt != "csv" and not has_positions(detail):
+            return _error("Der Flug enthält keine Positionen", HTTPStatus.NOT_FOUND)
+        tz = dt_util.get_time_zone(hass.config.time_zone) or dt_util.UTC
+        body = RENDERERS[fmt](detail)
+        return web.Response(body=body.encode("utf-8"), content_type=FORMATS[fmt], charset="utf-8",
+                            headers={"Content-Disposition": f'attachment; filename="{file_name(detail, fmt, tz)}"'})

@@ -34,3 +34,19 @@ def flight_badges(extras: FlightExtras | None) -> dict[str, Any]:
     kinds = badge_kinds(e.kind for e in extras.events)
     worst = max((event_severity(k) for k in kinds), key=_RANK.__getitem__, default=None)
     return {"kinds": kinds, "worst": worst, "photo_count": extras.photo_count, "video_s": extras.video_s}
+
+
+EVENT_TITLES = {
+    EventKind.SIGNAL_LOSS_GO_HOME: "Rückkehr wegen Verbindungsabbruch",
+    EventKind.BATTERY_GO_HOME: "Rückkehr wegen Akku",
+    EventKind.VOLTAGE_WARNING: "Spannungswarnung",
+    EventKind.WEAK_SIGNAL: "Funksignal schwach",
+    EventKind.LOW_GPS: "GPS-Signal schwach",
+    EventKind.MANUAL_GO_HOME: "Rückkehr per Taste",
+    EventKind.PROPELLER_CATAPULT: "Propeller-Anlauf",
+}
+
+
+def event_title(kind: str) -> str:
+    """Deutscher Titel wie in der iOS-App; unbekannte Arten behalten ihren Schlüssel."""
+    return EVENT_TITLES.get(kind, kind) if kind in _ORDER else kind  # StrEnum-Schlüssel sind gleich ihren Werten

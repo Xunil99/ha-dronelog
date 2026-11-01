@@ -23,7 +23,7 @@ from .panel import async_register_panel, async_remove_panel
 from .processor import Options, Processor
 from .storage import RawLogStore
 from .websocket_api import async_register_commands
-from .view import DroneLogPingView, DroneLogUploadView
+from .view import DroneLogExportView, DroneLogPingView, DroneLogUploadView
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["sensor", "binary_sensor", "event"]
@@ -50,6 +50,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_register_commands(hass)
         hass.http.register_view(DroneLogUploadView())
         hass.http.register_view(DroneLogPingView())
+        hass.http.register_view(DroneLogExportView())
         hass.data[_VIEWS_KEY] = True
     entry.async_on_unload(entry.add_update_listener(_async_token_changed))
     if not hass.services.has_service(DOMAIN, "reprocess"):
