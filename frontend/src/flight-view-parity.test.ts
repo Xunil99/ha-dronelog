@@ -30,6 +30,7 @@ describe("flight list badges", () => {
     expect(text(el, "[data-badge=photos]")).toContain("3");
     expect(text(el, "[data-badge=video]")).toContain("1 min 35 s");
     expect(el.shadowRoot!.querySelector(".badge.event")!.getAttribute("aria-label")).toBe("Rückkehr wegen Verbindungsabbruch");
+    expect(el.shadowRoot!.querySelector(".badge.event")!.getAttribute("role")).toBe("img");
   });
   it("shows no badge row for flights without events or media (also old backends)", async () => {
     const el = await mount("dl-flight-list", { flights: [makeSummary(), makeSummary({ id: 2, event_kinds: [], photo_count: 0, video_s: 0 })], lang: "de" });

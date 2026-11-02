@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { DroneLogApi } from "./api";
 import { debounce, parseTags, tagsToText } from "./report-logic";
 import { t } from "./i18n";
@@ -24,7 +24,9 @@ export class FlightNote extends LitElement {
   declare loaded: boolean;
   declare status: Status;
   private token = 0;
-  private savingFor: number | undefined;
+  private running = false;
+  private latest: { id: number; text: string; tags: string } | undefined;
+  private readonly onHide = () => this.saver.flush();
   private readonly saver = debounce((id: number, text: string, tags: string) => void this.save(id, text, tags), 600);
 
   constructor() {
@@ -52,8 +54,14 @@ export class FlightNote extends LitElement {
     }
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("pagehide", this.onHide);  // Seite wird verlassen: ausstehende Änderung noch senden
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener("pagehide", this.onHide);
     this.saver.flush();
   }
 
@@ -75,14 +83,25 @@ export class FlightNote extends LitElement {
     }
   }
 
+  /** Speichert nacheinander: läuft eine Anfrage, wird nur der neueste Stand danach gesendet (Reihenfolge bleibt erhalten). */
   private async save(id: number, text: string, tags: string) {
-    this.status = "saving";
-    this.savingFor = id;
+    this.latest = { id, text, tags };
+    if (this.running) return;
+    this.running = true;
     try {
-      await new DroneLogApi(this.hass).noteSet(id, text, parseTags(tags));
-      if (this.savingFor === id) this.status = "saved";
-    } catch {
-      this.status = "failed";
+      while (this.latest) {
+        const job = this.latest;
+        this.latest = undefined;
+        this.status = "saving";
+        try {
+          await new DroneLogApi(this.hass).noteSet(job.id, job.text, parseTags(job.tags));
+          if (!this.latest && this.flightId === job.id) this.status = "saved";
+        } catch {
+          this.status = "failed";
+        }
+      }
+    } finally {
+      this.running = false;
     }
   }
 
@@ -95,13 +114,15 @@ export class FlightNote extends LitElement {
 
   render() {
     const l = this.hass?.language ?? "en";
-    const statusText = this.status === "saving" ? t("note_saving", l) : this.status === "saved" ? t("note_saved", l) : this.status === "failed" ? t("note_failed", l) : "";
+    const statusText = this.status === "saving" ? t("note_saving", l) : this.status === "saved" ? t("note_saved", l) : this.status === "failed" ? t(this.loaded ? "note_failed" : "error", l) : "";
     return html`
       <textarea rows="3" aria-label=${t("note", l)} placeholder=${t("note_placeholder", l)} maxlength="2000" .value=${this.text} ?disabled=${!this.loaded}
         @input=${(e: Event) => this.edit("text", (e.target as HTMLTextAreaElement).value)}></textarea>
       <input type="text" aria-label=${t("tags", l)} placeholder=${t("tags_placeholder", l)} .value=${this.tags} ?disabled=${!this.loaded}
         @input=${(e: Event) => this.edit("tags", (e.target as HTMLInputElement).value)} />
-      <div class="status muted ${this.status === "failed" ? "failed" : ""}" role="status" aria-live="polite">${statusText}</div>
+      <div class="status muted ${this.status === "failed" ? "failed" : ""}" role="status" aria-live="polite">${statusText}
+        ${!this.loaded && this.status === "failed" && this.flightId !== undefined ? html`<button id="retry" type="button" @click=${() => void this.load()}>${t("retry", l)}</button>` : nothing}
+      </div>
     `;
   }
 }

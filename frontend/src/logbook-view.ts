@@ -25,6 +25,7 @@ export class LogbookView extends LitElement {
     editing: { state: true },
     draftName: { state: true },
     busy: { state: true },
+    placeError: { state: true },
   };
   declare hass: HassLike;
   declare drone: string;
@@ -39,7 +40,9 @@ export class LogbookView extends LitElement {
   declare editing: PlaceStatDTO | undefined;
   declare draftName: string;
   declare busy: boolean;
+  declare placeError: boolean;
   private token = 0;
+  private bookToken = 0;
 
   constructor() {
     super();
@@ -52,6 +55,7 @@ export class LogbookView extends LitElement {
     this.bookError = false;
     this.draftName = "";
     this.busy = false;
+    this.placeError = false;
   }
 
   static styles = [
@@ -75,6 +79,8 @@ export class LogbookView extends LitElement {
 
   willUpdate(changed: Map<string, unknown>) {
     if (changed.has("drone") || changed.has("battery")) {
+      this.bookToken++;  // laufende Flugbuch-Anfrage verwerfen
+      this.busy = false;
       this.book = undefined;
       this.year = "";
       void this.load();
@@ -99,16 +105,18 @@ export class LogbookView extends LitElement {
   }
 
   private async createBook() {
+    const token = ++this.bookToken;
     this.busy = true;
     this.bookError = false;
     const year = this.year ? Number(this.year) : undefined;
     try {
       const data = await this.api.flightbook(this.drone || undefined, this.battery || undefined, year);
+      if (token !== this.bookToken) return;  // veraltete Antwort (Filter inzwischen gewechselt)
       this.book = { data, filterText: flightbookFilterText({ drone: this.drone ? this.droneLabel : undefined, battery: this.battery ? this.batteryLabel : undefined, year }, this.language) };
     } catch {
-      this.bookError = true;
+      if (token === this.bookToken) this.bookError = true;
     } finally {
-      this.busy = false;
+      if (token === this.bookToken) this.busy = false;
     }
   }
 
@@ -120,13 +128,15 @@ export class LogbookView extends LitElement {
       const name = result.name || null;
       if (this.logbook) this.logbook = { ...this.logbook, places: this.logbook.places.map((p) => (p.key === place.key ? { ...p, name } : p)) };
       this.editing = undefined;
+      this.placeError = false;
     } catch {
-      this.error = true;
+      this.placeError = true;  // Formular bleibt offen, Eingabe geht nicht verloren
     }
   }
 
   private edit(place: PlaceStatDTO) {
     this.editing = place;
+    this.placeError = false;
     this.draftName = place.name ?? "";
   }
 
@@ -182,6 +192,7 @@ export class LogbookView extends LitElement {
               @input=${(e: Event) => (this.draftName = (e.target as HTMLInputElement).value)} />
             <button class="primary" type="submit">${t("save", l)}</button>
             <button type="button" @click=${() => (this.editing = undefined)}>${t("cancel", l)}</button>
+            ${this.placeError ? html`<span class="error" role="alert">${t("note_failed", l)}</span>` : nothing}
             <span id="place-hint" class="muted hint">${t("place_name_hint", l)}</span>
           </form>` : nothing}
           <p class="muted hint">${t("places_hint", l)}</p>

@@ -61,3 +61,8 @@ export function formatClock(seconds: number | null | undefined): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return total >= 3600 ? `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}` : `${Math.floor(total / 60)}:${pad(total % 60)}`;
 }
+
+/** Maskiert Text für Stellen, die ihn als HTML auswerten (z. B. Leaflet-Tooltips). */
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}

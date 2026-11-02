@@ -58,7 +58,7 @@ export class FlightList extends LitElement {
       ${b.kinds.map((kind) => {
         const info = eventInfo(kind);
         const title = eventTitle(kind, this.lang);
-        return html`<span class="badge event" data-kind=${kind} data-severity=${info.severity} title=${title} aria-label=${title}><ha-icon icon=${info.icon} style="color:${info.color}"></ha-icon></span>`;
+        return html`<span class="badge event" role="img" data-kind=${kind} data-severity=${info.severity} title=${title} aria-label=${title}><ha-icon icon=${info.icon} style="color:${info.color}"></ha-icon></span>`;
       })}
       ${b.photos > 0 ? html`<span class="badge" data-badge="photos" title=${t("photos", this.lang)}><ha-icon icon="mdi:camera"></ha-icon>${b.photos}</span>` : nothing}
       ${b.videoS > 0 ? html`<span class="badge" data-badge="video" title=${t("video", this.lang)}><ha-icon icon="mdi:video"></ha-icon>${formatDuration(b.videoS)}</span>` : nothing}

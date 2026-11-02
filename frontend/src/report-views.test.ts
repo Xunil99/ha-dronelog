@@ -67,6 +67,34 @@ describe("logbook-view", () => {
     expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/place_name_set", key: "3,4", name: "Spielplatz" });
     expect(el.shadowRoot!.querySelector("form.edit")).toBeNull();
   });
+  it("shows an error next to the place form when naming fails and keeps the form open", async () => {
+    const hass = hassWith((m) => { if (m.type === "dronelog/place_name_set") throw new Error("x"); return m.type === "dronelog/logbook" ? logbook : {}; });
+    const el = await mount("dl-logbook-view", { hass });
+    (el.shadowRoot!.querySelector("button.place[data-key='3,4']") as HTMLButtonElement).click();
+    await tick(el);
+    (el.shadowRoot!.querySelector("form.edit") as HTMLFormElement).dispatchEvent(new Event("submit", { cancelable: true }));
+    await tick(el);
+    expect(el.shadowRoot!.querySelector("form.edit")).not.toBeNull();
+    expect(el.shadowRoot!.querySelector("form.edit [role=alert]")).not.toBeNull();
+    expect(el.shadowRoot!.querySelector("#places-card")).not.toBeNull();
+  });
+  it("discards a stale flight book answer when a newer request was made", async () => {
+    const resolvers: Array<(v: unknown) => void> = [];
+    const hass = hassWith((m) => (m.type === "dronelog/logbook" ? logbook : new Promise((resolve) => { resolvers.push(resolve); })));
+    const el = await mount("dl-logbook-view", { hass });
+    const create = el.shadowRoot!.querySelector("#create-book") as HTMLButtonElement;
+    create.click();
+    await tick(el);
+    (el as unknown as { busy: boolean }).busy = false;  // zweite Anfrage trotz laufender erster (z. B. Filterwechsel)
+    (el as unknown as { createBook(): Promise<void> }).createBook();
+    await tick(el);
+    expect(resolvers).toHaveLength(2);
+    resolvers[1]({ rows: [], summary: { flights: 2, duration_s: 0, distance_m: 0 } });
+    await tick(el);
+    resolvers[0]({ rows: [], summary: { flights: 1, duration_s: 0, distance_m: 0 } });
+    await tick(el);
+    expect((el as unknown as { book: { data: FlightbookDTO } }).book.data.summary.flights).toBe(2);
+  });
   it("creates the flight book for the chosen year and the filters, then goes back", async () => {
     const hass = make();
     const el = await mount("dl-logbook-view", { hass, drone: "D1", droneLabel: "DJI Test …D001" });
@@ -286,6 +314,52 @@ describe("flight-note", () => {
     area.value = "x"; area.dispatchEvent(new Event("input"));
     el.remove();
     expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/note_set", flight_id: 5, text: "x", tags: "" });
+  });
+});
+
+describe("flight-note robustness", () => {
+  it("saves a pending change on pagehide", async () => {
+    const hass = hassWith((m) => (m.type === "dronelog/note_get" ? { flight_id: 5, text: "", tags: [] } : { flight_id: 5, text: "x", tags: [] }));
+    const el = await mount("dl-flight-note", { hass, flightId: 5 });
+    const area = el.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
+    area.value = "x"; area.dispatchEvent(new Event("input"));
+    window.dispatchEvent(new Event("pagehide"));
+    expect(hass.callWS).toHaveBeenCalledWith({ type: "dronelog/note_set", flight_id: 5, text: "x", tags: "" });
+  });
+  it("sends only the latest state after an in-flight request finishes and keeps the order", async () => {
+    const sent: string[] = [];
+    const resolvers: Array<() => void> = [];
+    const hass = hassWith((m) => {
+      if (m.type === "dronelog/note_get") return { flight_id: 5, text: "", tags: [] };
+      sent.push(m.text as string);
+      return new Promise<void>((resolve) => { resolvers.push(resolve); });
+    });
+    const el = await mount("dl-flight-note", { hass, flightId: 5 });
+    const area = el.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
+    const type = (v: string) => { area.value = v; area.dispatchEvent(new Event("input")); (el as unknown as { saver: { flush(): void } }).saver.flush(); };
+    type("a");
+    await tick(el);
+    type("b"); type("c");
+    await tick(el);
+    expect(sent).toEqual(["a"]);  // b und c warten auf die laufende Anfrage
+    resolvers[0]();
+    await tick(el);
+    expect(sent).toEqual(["a", "c"]);
+    resolvers[1]();
+    await tick(el);
+    expect(el.shadowRoot!.querySelector(".status")!.textContent).toContain("Gespeichert");
+  });
+  it("offers a retry when loading the note fails", async () => {
+    let fail = true;
+    const hass = hassWith((m) => { if (m.type === "dronelog/note_get") { if (fail) throw new Error("x"); return { flight_id: 5, text: "alt", tags: [] }; } return {}; });
+    const el = await mount("dl-flight-note", { hass, flightId: 5 });
+    const retry = el.shadowRoot!.querySelector("#retry") as HTMLButtonElement;
+    expect(retry).not.toBeNull();
+    fail = false;
+    retry.click();
+    await tick(el);
+    expect((el.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value).toBe("alt");
+    expect(el.shadowRoot!.querySelector("#retry")).toBeNull();
   });
 });
 

@@ -1,3 +1,4 @@
+import { escapeHtml } from "./format";
 import L from "leaflet";
 import leafletCss from "leaflet/dist/leaflet.css?inline";
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
@@ -131,7 +132,7 @@ export class RouteMap extends LitElement {
     for (const m of eventMarkers(this.events ?? [], this.points)) {
       const info = eventInfo(m.event.kind);
       L.circleMarker([m.lat, m.lon], { radius: 6, color: "#fff", weight: 2, fillColor: info.color, fillOpacity: 1, pane: "markerPane" })
-        .bindTooltip(eventTitle(m.event.kind, this.lang))
+        .bindTooltip(escapeHtml(eventTitle(m.event.kind, this.lang)))
         .addTo(this.layer);
     }
     if (bounds.length === 0) return;
