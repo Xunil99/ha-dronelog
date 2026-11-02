@@ -66,4 +66,14 @@ describe("route-map", () => {
     expect(el.map).toBeDefined();
     expect(el.map!.getZoom()).toBeGreaterThan(8);
   });
+
+  it("escapes the tooltip text of event markers", async () => {
+    const points = makePoints(10);
+    const el = await mount({ points, start: { lat: 47.5, lon: 11 }, end: { lat: 47.51, lon: 11.001 }, tileUrl: "", lang: "de",
+      events: [{ kind: "<img src=x onerror=alert(1)>", t: points[3].t, value: 0, severity: "info" }] } as unknown as Partial<MapEl>);
+    const tips: string[] = [];
+    el.map!.eachLayer((l) => { const tip = (l as L.Layer & { getTooltip?(): L.Tooltip | undefined }).getTooltip?.(); if (tip) tips.push(String(tip.getContent())); });
+    expect(tips.length).toBeGreaterThan(0);
+    expect(tips.join("")).not.toContain("<img");
+  });
 });

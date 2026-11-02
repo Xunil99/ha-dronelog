@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import DroneLogCoordinator
+from .maintenance_entities import MaintenanceEntity, async_track_maintenance
 from .models import BatteryInfo, DroneInfo, Overview
 
 
@@ -115,6 +116,21 @@ def _drone_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator, drone: 
     ]
 
 
+class HoursSinceServiceSensor(MaintenanceEntity, SensorEntity):
+    _attr_translation_key = "hours_since_service"
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_state_class = SensorStateClass.MEASUREMENT  # sinkt bei Wartung oder wenn ein Flug gelöscht wird
+
+    def __init__(self, coordinator: DroneLogCoordinator, serial: str, model: str) -> None:
+        super().__init__(coordinator, serial, model, "hours_since_service")
+
+    @property
+    def native_value(self) -> float | None:
+        row = self.row
+        return None if row is None or row.status is None else round(row.status.used_hours, 2)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: DroneLogCoordinator = hass.data[DOMAIN]["coordinator"]
     async_add_entities(_main_sensors(entry, coordinator))
@@ -135,3 +151,4 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
     add_new()
     entry.async_on_unload(coordinator.async_add_listener(add_new))
+    async_track_maintenance(entry, coordinator, async_add_entities, lambda serial, model: HoursSinceServiceSensor(coordinator, serial, model))

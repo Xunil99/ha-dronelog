@@ -48,3 +48,21 @@ export function compass(degrees: number, lang = "de"): string {
 export function formatWind(ms: number | null | undefined, locale: string): string {
   return valid(ms) ? `${number(ms, locale, 1)} m/s` : dash;
 }
+
+/** Dezimalzahl mit fester Nachkommastellenzahl im Zahlenformat der Sprache; ungültig = Strich. */
+export function formatDecimal(n: number | null | undefined, locale: string, digits = 1): string {
+  return valid(n) ? number(n, locale, digits) : dash;
+}
+
+/** Zeit seit Flugstart als m:ss bzw. h:mm:ss. */
+export function formatClock(seconds: number | null | undefined): string {
+  if (!valid(seconds) || seconds < 0) return dash;
+  const total = Math.round(seconds);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return total >= 3600 ? `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}` : `${Math.floor(total / 60)}:${pad(total % 60)}`;
+}
+
+/** Maskiert Text für Stellen, die ihn als HTML auswerten (z. B. Leaflet-Tooltips). */
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}

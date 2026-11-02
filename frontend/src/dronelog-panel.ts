@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import "./flights-view";
-import "./stats-view";
+import "./analysis-view";
 import { t } from "./i18n";
 import { baseStyles } from "./styles";
 import type { HassLike } from "./types";
@@ -14,12 +14,14 @@ export class DroneLogPanel extends LitElement {
     panel: { attribute: false },
     tab: { state: true },
     jumpId: { state: true },
+    reportSerial: { state: true },
   };
   declare hass: HassLike;
   declare narrow: boolean;
   declare panel: { config?: { tile_url?: string } } | undefined;
   declare tab: Tab;
   declare jumpId: number | undefined;
+  declare reportSerial: string | undefined;
 
   constructor() {
     super();
@@ -43,12 +45,19 @@ export class DroneLogPanel extends LitElement {
 
   private show(tab: Tab) {
     this.jumpId = undefined;
+    this.reportSerial = undefined;
     this.tab = tab;
   }
 
   private onOpenFlight(event: Event) {
     this.jumpId = (event as CustomEvent<number>).detail;
     this.tab = "flights";
+  }
+
+  /** Aus Flugdetail oder Akku-Auswertung: Akku-Bericht im Reiter „Auswertung“ öffnen. */
+  private onOpenReport(event: Event) {
+    this.reportSerial = (event as CustomEvent<string>).detail;
+    this.tab = "stats";
   }
 
   private toggleMenu() {
@@ -66,10 +75,10 @@ export class DroneLogPanel extends LitElement {
         <button role="tab" aria-selected=${this.tab === "flights"} @click=${() => this.show("flights")}>${t("tab_flights", lang)}</button>
         <button role="tab" aria-selected=${this.tab === "stats"} @click=${() => this.show("stats")}>${t("tab_stats", lang)}</button>
       </nav>
-      <main @open-flight=${this.onOpenFlight}>
+      <main @open-flight=${this.onOpenFlight} @open-battery-report=${this.onOpenReport}>
         ${this.tab === "flights"
           ? html`<dl-flights-view .hass=${this.hass} .narrow=${this.narrow} .tileUrl=${this.panel?.config?.tile_url ?? ""} .initialId=${this.jumpId}></dl-flights-view>`
-          : html`<dl-stats-view .hass=${this.hass} .tileUrl=${this.panel?.config?.tile_url ?? ""}></dl-stats-view>`}
+          : html`<dl-analysis-view .hass=${this.hass} .tileUrl=${this.panel?.config?.tile_url ?? ""} .openReport=${this.reportSerial}></dl-analysis-view>`}
       </main>
     `;
   }

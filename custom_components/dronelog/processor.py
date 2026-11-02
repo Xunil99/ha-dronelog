@@ -103,6 +103,35 @@ class Processor:
                 result.append(sha)
         return result
 
+    async def reanalyze_outdated(self) -> dict[str, int]:
+        """Wertet Flüge mit veralteter Auswertungsversion offline neu aus (Rohdatei + gespeicherte Keychains, nie ein Netzzugriff).
+        Schlägt etwas fehl, bleibt der alte Flug unverändert."""
+        job = self._hass.async_add_executor_job
+        report = {"reanalyzed": 0, "skipped": 0, "failed": 0}
+        for sha in await job(self._store.shas_needing_reanalysis):
+            raw = self._raw_dir / f"{sha}.txt"
+            await asyncio.sleep(0)  # dem Ereignis-Loop zwischen den Flügen Luft lassen
+            try:
+                data = await job(raw.read_bytes)
+                stored = await job(self._store.stored_keychains, sha)
+                flight = await job(parse_log, data, sha, None, stored, False)
+                replaced = await job(self._store.replace_flight, flight)
+                report["reanalyzed" if replaced else "skipped"] += 1
+            except asyncio.CancelledError:
+                raise
+            except (KeyRequiredError, FileNotFoundError, ParseError):
+                # offline nicht möglich bzw. dauerhaft nicht auswertbar (Kopf-Fallback, Rohdatei fehlt, defekter Log):
+                # alter Flug bleibt, aber nicht bei jedem Start erneut versuchen
+                await job(self._store.mark_analysis_current, sha)
+                report["skipped"] += 1
+            except Exception as err:  # noqa: BLE001 - ein Fehler darf die übrigen Flüge nicht aufhalten
+                _LOGGER.debug("Neuauswertung fehlgeschlagen (%s)", type(err).__name__)
+                report["failed"] += 1
+        if any(report.values()):
+            _LOGGER.debug("Neuauswertung: %d aktualisiert, %d übersprungen, %d fehlgeschlagen",
+                         report["reanalyzed"], report["skipped"], report["failed"])
+        return report
+
     async def run_until_idle(self) -> None:
         await self._queue.join()
         if self._worker:

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "./dronelog-panel";
-import { makeBattery, makeDetail, makeSummary } from "./fixtures";
+import { makeBattery, makeDetail, makeReport, makeSummary } from "./fixtures";
 
 function hass() {
   return { language: "de", config: { time_zone: "UTC" }, themes: { darkMode: false },
@@ -11,6 +11,8 @@ function hass() {
         case "dronelog/stats": return { totals: { flights: 1, duration_s: 60, distance_m: 100 }, months: [{ month: "2026-10", flights: 1, duration_s: 60, distance_m: 100 }], drones: [] };
         case "dronelog/batteries": return { batteries: [makeBattery()] };
         case "dronelog/heatmap": return { cells: [] };
+        case "dronelog/battery_report": return makeReport();
+        case "dronelog/note_get": return { flight_id: 7, text: "", tags: [] };
         default: return {};
       }
     }) };
@@ -38,18 +40,41 @@ describe("dronelog-panel", () => {
     expect(el.shadowRoot!.querySelector("dl-flights-view")).not.toBeNull();
     tab(el, "Auswertung").click();
     await el.updateComplete;
-    expect(el.shadowRoot!.querySelector("dl-stats-view")).not.toBeNull();
+    expect(el.shadowRoot!.querySelector("dl-analysis-view")).not.toBeNull();
     expect(el.shadowRoot!.querySelector("dl-flights-view")).toBeNull();
   });
   it("jumps to the flights tab with the chosen flight when the heatmap opens one", async () => {
     const el = await mount();
     tab(el, "Auswertung").click();
     await el.updateComplete;
-    el.shadowRoot!.querySelector("dl-stats-view")!.dispatchEvent(new CustomEvent("open-flight", { detail: 7, bubbles: true, composed: true }));
+    el.shadowRoot!.querySelector("dl-analysis-view")!.dispatchEvent(new CustomEvent("open-flight", { detail: 7, bubbles: true, composed: true }));
     await el.updateComplete;
     for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 0)); await el.updateComplete; }
     expect(el.shadowRoot!.querySelector("dl-flights-view")).not.toBeNull();
     expect(current.callWS).toHaveBeenCalledWith(expect.objectContaining({ type: "dronelog/flight", flight_id: 7 }));
+  });
+  it("opens the battery report of a flight in the analysis tab", async () => {
+    const el = await mount();
+    el.shadowRoot!.querySelector("dl-flights-view")!.dispatchEvent(new CustomEvent("open-battery-report", { detail: "BATTERY00H413", bubbles: true, composed: true }));
+    for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 0)); await el.updateComplete; }
+    const analysis = el.shadowRoot!.querySelector("dl-analysis-view") as HTMLElement & { report?: string };
+    expect(analysis).not.toBeNull();
+    expect(analysis.report).toBe("BATTERY00H413");
+    expect(current.callWS).toHaveBeenCalledWith({ type: "dronelog/battery_report", battery_serial: "BATTERY00H413" });
+  });
+  it("can open the report of the same battery again from a flight after closing it", async () => {
+    const el = await mount();
+    for (let round = 0; round < 2; round++) {
+      tab(el, "Flüge").click();
+      for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 0)); await el.updateComplete; }
+      el.shadowRoot!.querySelector("dl-flights-view")!.dispatchEvent(new CustomEvent("open-battery-report", { detail: "BATTERY00H413", bubbles: true, composed: true }));
+      for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 0)); await el.updateComplete; }
+      const analysis = el.shadowRoot!.querySelector("dl-analysis-view") as HTMLElement & { report?: string };
+      expect(analysis.report).toBe("BATTERY00H413");
+      analysis.shadowRoot!.querySelector("dl-battery-report")!.dispatchEvent(new CustomEvent("close"));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(analysis.report).toBeUndefined();
+    }
   });
   it("shows the menu button on narrow screens and fires hass-toggle-menu", async () => {
     const el = await mount(true);

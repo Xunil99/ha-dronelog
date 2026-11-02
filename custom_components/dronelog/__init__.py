@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
@@ -21,9 +23,10 @@ from .panel import async_register_panel, async_remove_panel
 from .processor import Options, Processor
 from .storage import RawLogStore
 from .websocket_api import async_register_commands
-from .view import DroneLogPingView, DroneLogUploadView
+from .view import DroneLogExportView, DroneLogPingView, DroneLogUploadView
 
-PLATFORMS = ["sensor", "event"]
+_LOGGER = logging.getLogger(__name__)
+PLATFORMS = ["sensor", "binary_sensor", "event"]
 RETRY_INTERVAL = timedelta(hours=1)
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 _VIEWS_KEY = f"{DOMAIN}_views_registered"
@@ -47,12 +50,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_register_commands(hass)
         hass.http.register_view(DroneLogUploadView())
         hass.http.register_view(DroneLogPingView())
+        hass.http.register_view(DroneLogExportView())
         hass.data[_VIEWS_KEY] = True
     entry.async_on_unload(entry.add_update_listener(_async_token_changed))
     if not hass.services.has_service(DOMAIN, "reprocess"):
         hass.services.async_register(DOMAIN, "reprocess", _handle_reprocess, schema=vol.Schema({vol.Optional("sha256"): str}))
         hass.services.async_register(DOMAIN, "delete_flight", _handle_delete_flight, schema=vol.Schema({vol.Required("flight_id"): int}))
-    entry.async_create_background_task(hass, processor.enqueue_unprocessed_raw(), "dronelog_startup")
+    entry.async_create_background_task(hass, _startup_jobs(processor), "dronelog_startup")
 
     async def retry_waiting(_now) -> None:
         if DOMAIN in hass.data:
@@ -60,6 +64,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(async_track_time_interval(hass, retry_waiting, RETRY_INTERVAL))
     return True
+
+
+async def _startup_jobs(processor: Processor) -> None:
+    """Nachimport und Offline-Neuauswertung älterer Flüge (nach einem Update); blockiert den Start nicht."""
+    await processor.enqueue_unprocessed_raw()
+    try:
+        await processor.reanalyze_outdated()
+    except asyncio.CancelledError:
+        raise
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Neuauswertung abgebrochen (%s)", type(err).__name__)
 
 
 async def _async_token_changed(hass: HomeAssistant, entry: ConfigEntry) -> None:

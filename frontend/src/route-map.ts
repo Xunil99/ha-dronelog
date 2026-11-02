@@ -1,11 +1,13 @@
+import { escapeHtml } from "./format";
 import L from "leaflet";
 import leafletCss from "leaflet/dist/leaflet.css?inline";
-import { LitElement, css, html, unsafeCSS } from "lit";
+import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { heightColor } from "./colors";
 import { t } from "./i18n";
-import { buildSegments, heightRange } from "./route-segments";
+import { eventInfo, eventMarkers, eventTitle } from "./flight-logic";
+import { buildSegments, hasSignal, heightRange, signalColor, UNKNOWN_COLOR, type RouteChannel } from "./route-segments";
 import { baseStyles } from "./styles";
-import type { LatLonDTO, Point } from "./types";
+import type { FlightEventDTO, LatLonDTO, Point } from "./types";
 
 export class RouteMap extends LitElement {
   static properties = {
@@ -14,15 +16,20 @@ export class RouteMap extends LitElement {
     end: { attribute: false },
     tileUrl: { type: String },
     lang: { type: String },
+    events: { attribute: false },
+    channel: { state: true },
   };
   declare points: Point[];
   declare start: LatLonDTO | null;
   declare end: LatLonDTO | null;
   declare tileUrl: string;
   declare lang: string;
+  declare events: FlightEventDTO[];
+  declare channel: RouteChannel;
   map?: L.Map;
   private layer?: L.LayerGroup;
   private resizeObserver?: ResizeObserver;
+  private fittedFor?: Point[];
 
   constructor() {
     super();
@@ -31,6 +38,8 @@ export class RouteMap extends LitElement {
     this.end = null;
     this.tileUrl = "";
     this.lang = "de";
+    this.events = [];
+    this.channel = "height";
   }
 
   static styles = [
@@ -39,6 +48,9 @@ export class RouteMap extends LitElement {
     css`
       .map { height: 340px; border-radius: 12px; border: 1px solid var(--divider-color, #ddd); z-index: 0; }
       .legend { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-top: 6px; color: var(--secondary-text-color); }
+      .modes { display: flex; gap: 6px; margin-top: 6px; }
+      .modes button { padding: 2px 10px; font-size: 0.8rem; }
+      .modes button[aria-pressed="true"] { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: var(--primary-color); }
       .legend .bar { flex: 1; height: 8px; border-radius: 4px; max-width: 220px; }
     `,
   ];
@@ -47,12 +59,37 @@ export class RouteMap extends LitElement {
     return this.start !== null || this.end !== null || this.points.some((p) => p.lat !== null && p.lon !== null);
   }
 
+  private get signalAvailable() {
+    return hasSignal(this.points);
+  }
+
+  private get activeChannel(): RouteChannel {
+    return this.channel === "signal" && this.signalAvailable ? "signal" : "height";
+  }
+
+  private setChannel(channel: RouteChannel) {
+    this.channel = channel;
+  }
+
   render() {
     if (!this.hasPosition) return html`<p class="muted">${t("no_position", this.lang)}</p>`;
+    const l = this.lang;
+    const channel = this.activeChannel;
     const { min, max } = heightRange(this.points);
-    const gradient = `linear-gradient(to right, ${heightColor(min, min, max)}, ${heightColor((min + max) / 2, min, max)}, ${heightColor(max, min, max)})`;
+    const gradient = channel === "signal"
+      ? `linear-gradient(to right, ${signalColor(0)}, ${signalColor(50)}, ${signalColor(100)})`
+      : `linear-gradient(to right, ${heightColor(min, min, max)}, ${heightColor((min + max) / 2, min, max)}, ${heightColor(max, min, max)})`;
     return html`<div class="map"></div>
-      <div class="legend"><span>${Math.round(min)} m</span><div class="bar" style="background:${gradient}"></div><span>${Math.round(max)} m</span></div>`;
+      ${this.signalAvailable
+        ? html`<div class="modes" role="group" aria-label=${t("color_by", l)}>
+            <button type="button" data-channel="height" aria-pressed=${channel === "height"} @click=${() => this.setChannel("height")}>${t("color_height", l)}</button>
+            <button type="button" data-channel="signal" aria-pressed=${channel === "signal"} @click=${() => this.setChannel("signal")}>${t("color_signal", l)}</button>
+          </div>`
+        : nothing}
+      <div class="legend">
+        <span>${channel === "signal" ? "0 %" : `${Math.round(min)} m`}</span><div class="bar" style="background:${gradient}"></div><span>${channel === "signal" ? "100 %" : `${Math.round(max)} m`}</span>
+        ${channel === "signal" ? html`<span style="display:inline-flex;align-items:center;gap:4px"><i style="width:10px;height:10px;border-radius:2px;background:${UNKNOWN_COLOR}"></i>${t("unknown", l)}</span>` : nothing}
+      </div>`;
   }
 
   updated() {
@@ -83,7 +120,7 @@ export class RouteMap extends LitElement {
     this.layer.clearLayers();
     const { min, max } = heightRange(this.points);
     const bounds: L.LatLngTuple[] = [];
-    for (const s of buildSegments(this.points, min, max)) {
+    for (const s of buildSegments(this.points, min, max, this.activeChannel)) {
       L.polyline([s.from, s.to], { color: s.color, weight: 4 }).addTo(this.layer);
       bounds.push(s.from, s.to);
     }
@@ -92,7 +129,15 @@ export class RouteMap extends LitElement {
     if (this.start) bounds.push([this.start.lat, this.start.lon]);
     if (this.end) bounds.push([this.end.lat, this.end.lon]);
     for (const p of this.points) if (p.lat !== null && p.lon !== null) bounds.push([p.lat, p.lon]);
+    for (const m of eventMarkers(this.events ?? [], this.points)) {
+      const info = eventInfo(m.event.kind);
+      L.circleMarker([m.lat, m.lon], { radius: 6, color: "#fff", weight: 2, fillColor: info.color, fillOpacity: 1, pane: "markerPane" })
+        .bindTooltip(escapeHtml(eventTitle(m.event.kind, this.lang)))
+        .addTo(this.layer);
+    }
     if (bounds.length === 0) return;
+    if (this.fittedFor === this.points) return;  // Umschalten der Färbung soll den Kartenausschnitt nicht zurücksetzen
+    this.fittedFor = this.points;
     const area = L.latLngBounds(bounds);
     // Ein einzelner Punkt (oder Start = Landung) ergibt keine Fläche: dann nah heranzoomen statt Weltkarte
     if (area.getNorthEast().equals(area.getSouthWest())) this.map.setView(area.getCenter(), 16);
@@ -104,6 +149,7 @@ export class RouteMap extends LitElement {
     this.map?.remove();
     this.map = undefined;
     this.layer = undefined;
+    this.fittedFor = undefined;
   }
 
   disconnectedCallback() {

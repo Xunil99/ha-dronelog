@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import logging
@@ -387,3 +388,140 @@ async def test_processor_retries_transient_service_error_once_before_blocking(en
     await run(env, "a" * 64, "b" * 64)
     assert env.store.has_flight("a" * 64) and env.store.has_flight("b" * 64)
     assert attempts == ["a" * 64, "a" * 64, "b" * 64]
+
+
+# --- Offline-Neuauswertung veralteter Flüge -------------------------------------------------------
+
+def _outdated(env, sha, **flight_kwargs):
+    env.store.add_flight(make_flight(sha=sha, **flight_kwargs), WEATHER, "orig.txt")
+    with env.store._connect() as conn:
+        conn.execute("UPDATE flights SET analysis_version=1 WHERE sha256=?", (sha,))
+
+
+async def test_reanalyze_replaces_outdated_flight_offline_and_keeps_id_weather_source(env, monkeypatch):
+    sha = "a" * 64
+    _outdated(env, sha)
+    write_raw(env.raw, sha)
+    calls = []
+
+    def parse(data, s, api_key, stored, allow_fetch=True):
+        calls.append((api_key, stored, allow_fetch))
+        return make_flight(sha=s, duration=999.0)
+
+    monkeypatch.setattr(processor_module, "parse_log", parse)
+    report = await env.processor.reanalyze_outdated()
+    assert report == {"reanalyzed": 1, "skipped": 0, "failed": 0}
+    assert calls == [(None, None, False)]  # nie ein Netzzugriff
+    assert env.store.shas_needing_reanalysis() == []
+    detail = env.store.get_flight(1)
+    assert detail.weather == WEATHER and detail.row.source_name == "orig.txt" and detail.row.id == 1
+
+
+async def test_reanalyze_uses_stored_keychains(env, monkeypatch):
+    sha = "a" * 64
+    _outdated(env, sha, keychains="KC")
+    write_raw(env.raw, sha)
+    seen = []
+    monkeypatch.setattr(processor_module, "parse_log", lambda d, s, k, stored, allow_fetch=True: seen.append(stored) or make_flight(sha=s))
+    await env.processor.reanalyze_outdated()
+    assert seen == ["KC"]
+
+
+async def test_reanalyze_missing_raw_or_parse_error_keeps_flight_and_is_not_retried(env, monkeypatch):
+    _outdated(env, "1" * 64)  # Rohdatei fehlt
+    _outdated(env, "2" * 64, start=None)
+    write_raw(env.raw, "2" * 64)
+
+    def parse(data, s, api_key, stored, allow_fetch=True):
+        raise ParseError("kaputt")
+
+    monkeypatch.setattr(processor_module, "parse_log", parse)
+    report = await env.processor.reanalyze_outdated()
+    assert report == {"reanalyzed": 0, "skipped": 2, "failed": 0}
+    assert env.store.shas_needing_reanalysis() == []  # dauerhaft: kein erneuter Versuch bei jedem Start
+    assert env.store.has_flight("1" * 64) and env.store.has_flight("2" * 64)
+    assert len(env.store.get_flight(1).samples) == 5  # alte Daten unverändert
+
+
+async def test_reanalyze_unexpected_error_is_retried_next_time(env, monkeypatch):
+    _outdated(env, "1" * 64)
+    write_raw(env.raw, "1" * 64)
+
+    def parse(data, s, api_key, stored, allow_fetch=True):
+        raise RuntimeError("unerwartet")
+
+    monkeypatch.setattr(processor_module, "parse_log", parse)
+    assert (await env.processor.reanalyze_outdated())["failed"] == 1
+    assert env.store.shas_needing_reanalysis() == ["1" * 64]
+
+
+async def test_reanalyze_key_required_marks_current_and_counts_skipped(env, monkeypatch):
+    sha = "a" * 64
+    _outdated(env, sha)
+    write_raw(env.raw, sha)
+
+    def parse(data, s, api_key, stored, allow_fetch=True):
+        raise KeyRequiredError("fehlt")
+
+    monkeypatch.setattr(processor_module, "parse_log", parse)
+    report = await env.processor.reanalyze_outdated()
+    assert report == {"reanalyzed": 0, "skipped": 1, "failed": 0}
+    assert env.store.shas_needing_reanalysis() == []
+    assert len(env.store.get_flight(1).samples) == 5  # alte Daten unverändert
+
+
+async def test_reanalyze_flight_without_frames_is_set_current(env, monkeypatch):
+    sha = "a" * 64
+    _outdated(env, sha)
+    write_raw(env.raw, sha)
+    monkeypatch.setattr(processor_module, "parse_log", lambda d, s, k, stored, allow_fetch=True: make_flight(sha=s, samples=()))
+    report = await env.processor.reanalyze_outdated()
+    assert report["reanalyzed"] == 1
+    assert env.store.shas_needing_reanalysis() == []
+
+
+async def test_reanalyze_does_nothing_when_current_and_logs_counts(env, caplog):
+    env.store.add_flight(make_flight(), None, "x.txt")
+    with caplog.at_level(logging.INFO):
+        assert await env.processor.reanalyze_outdated() == {"reanalyzed": 0, "skipped": 0, "failed": 0}
+    assert not env.parse_calls
+
+
+async def test_reanalyze_logs_counts_without_serials(env, monkeypatch, caplog):
+    _outdated(env, "a" * 64)
+    write_raw(env.raw, "a" * 64)
+    with caplog.at_level(logging.DEBUG):
+        await env.processor.reanalyze_outdated()
+    assert "1 aktualisiert" in caplog.text and "a" * 64 not in caplog.text
+
+
+async def test_reanalyze_summary_is_not_logged_above_debug(env, caplog):
+    _outdated(env, "a" * 64)
+    write_raw(env.raw, "a" * 64)
+    with caplog.at_level(logging.INFO):
+        await env.processor.reanalyze_outdated()
+    assert "aktualisiert" not in caplog.text
+
+
+async def test_startup_reanalyzes_outdated_flights(hass, tmp_path, monkeypatch):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    base = tmp_path / DOMAIN
+    (base / "raw").mkdir(parents=True)
+    sha = "a" * 64
+    store = FlightStore(base / "dronelog.db")
+    store.add_flight(make_flight(sha=sha), None, "orig.txt")
+    with store._connect() as conn:
+        conn.execute("UPDATE flights SET analysis_version=1")
+    write_raw(base / "raw", sha)
+    monkeypatch.setattr(processor_module, "parse_log", lambda d, s, k, st, allow_fetch=True: make_flight(sha=s, duration=777.0))
+    hass.config.config_dir = str(tmp_path)
+    entry = MockConfigEntry(domain=DOMAIN, data={"token": TOKEN})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    for _ in range(100):  # Hintergrundaufgabe: kurz abwarten
+        if not store.shas_needing_reanalysis():
+            break
+        await asyncio.sleep(0.05)
+    assert store.shas_needing_reanalysis() == []

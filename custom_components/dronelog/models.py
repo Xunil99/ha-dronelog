@@ -24,6 +24,53 @@ class Sample:
     voltage: float
     current: float
     charge: int
+    # Kanäle ab Analyseversion 2 (optional: ältere Datensätze enthalten sie nicht)
+    dist: float | None = None  # Entfernung vom Startpunkt in m
+    dl: int | None = None  # Downlink-Signal in %
+    ul: int | None = None  # Uplink-Signal in %
+    rec: bool | None = None  # Videoaufnahme läuft
+    mode: int | None = None  # Flugmodus-ID
+    # ab Analyseversion 3
+    temp: float | None = None  # Akku-Temperatur in °C (None = nicht gemessen)
+    cell_dev: float | None = None  # Zellabweichung in V (None = Zellwerte nur geschätzt)
+    # ab Analyseversion 4 (Lage in Grad, auf 0,1° gerundet)
+    pitch: float | None = None
+    roll: float | None = None
+    yaw: float | None = None
+
+
+class EventKind(StrEnum):
+    BATTERY_GO_HOME = "batteryGoHome"  # automatische Rückkehr wegen Akku (Flugaktion 3)
+    SIGNAL_LOSS_GO_HOME = "signalLossGoHome"  # Rückkehr wegen Verbindungsabbruch (15)
+    MANUAL_GO_HOME = "manualGoHome"  # Rückkehr per Taste (8)
+    VOLTAGE_WARNING = "voltageWarning"  # Spannungswarnung (value = Stufe)
+    PROPELLER_CATAPULT = "propellerCatapult"  # Propeller-Anlauf-Flag
+    LOW_GPS = "lowGPS"  # GPS-Stufe < 3 in der Luft (>= 3 s)
+    WEAK_SIGNAL = "weakSignal"  # Downlink < 30 % in der Luft (>= 3 s)
+
+
+@dataclass(frozen=True)
+class FlightEvent:
+    t: float  # Flugsekunde des Beginns
+    kind: str  # EventKind-Wert
+    value: float  # Dauer in s (bzw. Warnstufe)
+
+
+@dataclass(frozen=True)
+class FlightExtras:
+    """Zusätzliche Kennzahlen aus den vollaufgelösten Frames (Definitionen wie in der iOS-App)."""
+
+    events: tuple[FlightEvent, ...] = ()
+    energy_wh: float = 0.0
+    wh_per_km: float | None = None
+    max_distance_from_start_m: float = 0.0
+    downlink_min: int | None = None
+    uplink_min: int | None = None
+    weak_signal_s: float = 0.0
+    photo_count: int = 0
+    video_s: float = 0.0
+    max_descent_ms: float = 0.0
+    max_climb_ms: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -41,6 +88,7 @@ class BatterySummary:
     full_capacity_mah: int
     cycles: int | None
     health_pct: int | None
+    internal_resistance_mohm: float | None = None  # grobe Schätzung des Gesamtpacks; None = Qualitätstor nicht erfüllt
 
 
 @dataclass(frozen=True)
@@ -60,6 +108,7 @@ class ParsedFlight:
     battery: BatterySummary
     samples: tuple[Sample, ...]
     keychains_json: str
+    extras: FlightExtras | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +139,9 @@ class FlightRow:
     temperature_c: float | None
     wind_10m_ms: float | None
     has_position: bool = False
+    event_kinds: tuple[str, ...] = ()  # verschiedene Ereignisarten in Reihenfolge des ersten Auftretens
+    photo_count: int = 0
+    video_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -102,6 +154,8 @@ class FlightDetail:
     battery: BatterySummary
     weather: WeatherSummary | None
     samples: tuple[Sample, ...]
+    extras: FlightExtras | None = None
+    analysis_version: int = 1
 
 
 @dataclass(frozen=True)
@@ -123,6 +177,7 @@ class BatteryPoint:
     cell_deviation_max_v: float
     temp_max_c: float
     avg_power_w: float
+    internal_resistance_mohm: float | None = None
 
 
 @dataclass(frozen=True)
@@ -138,6 +193,9 @@ class DroneInfo:
     model: str
     flights: int
     duration_s: float
+    distance_m: float = 0.0
+    batteries: int = 0
+    last_flight: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -172,3 +230,21 @@ class BatteryListItem:
     last: datetime
     latest: BatteryPoint | None
     drones: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FlightHeader:
+    """Kopfdaten eines Flugs für Logbuch, Flugbuch und Wartung (ohne Zeitreihe)."""
+
+    flight_id: int
+    sha256: str
+    start: datetime
+    duration_s: float
+    distance_m: float
+    max_height_m: float
+    max_speed_ms: float
+    drone_serial: str
+    drone_model: str
+    battery_serial: str
+    start_lat: float | None
+    start_lon: float | None

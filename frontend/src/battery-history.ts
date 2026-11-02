@@ -47,6 +47,7 @@ export class BatteryHistory extends LitElement {
       button[aria-pressed="true"] { background: var(--primary-color); color: var(--text-primary-color, #fff); }
       .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 0.85rem; }
       .legend .warn { color: var(--error-color, #c62828); font-weight: 500; }
+      .reports { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
       .summary { margin-top: 12px; border-top: 1px solid var(--divider-color, #ddd); padding-top: 8px; }
       .summary h3 { font-size: 0.95rem; }
       .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
@@ -94,6 +95,9 @@ export class BatteryHistory extends LitElement {
         ${this.visible.map(
           (b, i) => html`<span class=${isWarning(b) ? "warn" : ""}><span class="dot" style="background:${isWarning(b) ? "#c62828" : PALETTE[i % PALETTE.length]}"></span>…${b.suffix} (${b.flights})${isWarning(b) ? " ⚠" : ""}</span>`,
         )}
+      </div>
+      <div class="reports">
+        ${this.visible.map((b) => html`<button data-report=${b.serial} @click=${() => this.dispatchEvent(new CustomEvent("open-battery-report", { detail: b.serial, bubbles: true, composed: true }))}>${t("open_report", l)} …${b.suffix}</button>`)}
       </div>
       ${this.visible.length === 1 ? this.summary(this.visible[0]) : ""}
     </div>`;
