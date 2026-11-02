@@ -8,6 +8,32 @@ Home-Assistant-Integration, die **Flugprotokolle von DJI-Drohnen** (DJI Fly) ent
 
 ---
 
+## Screenshots
+
+Alle Bilder zeigen synthetische Beispieldaten (keine echten Flüge oder Orte). · All images show synthetic sample data (no real flights or places).
+
+**Flugansicht / Flight view**
+
+![Flugliste und Flugdetail mit Akku, Wetter, Energie, Funk, Kamera, Flugphasen und Ereignissen](docs/screenshots/flights.png)
+
+**Auswertung: Statistik, Akkuverlauf, Heatmap / Analysis: statistics, battery history, heatmap**
+
+![Auswertung mit Statistik, Akkuverlauf je Akku und Heatmap der Startorte](docs/screenshots/analysis.png)
+
+**Akku-Bericht mit Gesamteinschätzung (druckbar) / Battery report with overall assessment (printable)**
+
+![Akku-Bericht mit Verlaufsdiagrammen, Kennzahlen und Gesamteinschätzung](docs/screenshots/battery-report.png)
+
+**Logbuch und Flugbuch / Logbook and flight log book**
+
+![Logbuch mit Rekorden, Jahren, Orten und Tags](docs/screenshots/logbook.png)
+
+**Wartung / Maintenance**
+
+![Wartungs-Erinnerungen je Drohne mit Fortschrittsbalken](docs/screenshots/maintenance.png)
+
+---
+
 ## Deutsch
 
 ### Was die Integration kann
