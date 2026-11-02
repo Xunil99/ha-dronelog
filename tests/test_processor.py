@@ -427,7 +427,7 @@ async def test_reanalyze_uses_stored_keychains(env, monkeypatch):
     assert seen == ["KC"]
 
 
-async def test_reanalyze_missing_raw_or_parse_error_leaves_flight_untouched(env, monkeypatch):
+async def test_reanalyze_missing_raw_or_parse_error_keeps_flight_and_is_not_retried(env, monkeypatch):
     _outdated(env, "1" * 64)  # Rohdatei fehlt
     _outdated(env, "2" * 64, start=None)
     write_raw(env.raw, "2" * 64)
@@ -437,9 +437,22 @@ async def test_reanalyze_missing_raw_or_parse_error_leaves_flight_untouched(env,
 
     monkeypatch.setattr(processor_module, "parse_log", parse)
     report = await env.processor.reanalyze_outdated()
-    assert report == {"reanalyzed": 0, "skipped": 0, "failed": 2}
-    assert sorted(env.store.shas_needing_reanalysis()) == ["1" * 64, "2" * 64]
+    assert report == {"reanalyzed": 0, "skipped": 2, "failed": 0}
+    assert env.store.shas_needing_reanalysis() == []  # dauerhaft: kein erneuter Versuch bei jedem Start
     assert env.store.has_flight("1" * 64) and env.store.has_flight("2" * 64)
+    assert len(env.store.get_flight(1).samples) == 5  # alte Daten unverändert
+
+
+async def test_reanalyze_unexpected_error_is_retried_next_time(env, monkeypatch):
+    _outdated(env, "1" * 64)
+    write_raw(env.raw, "1" * 64)
+
+    def parse(data, s, api_key, stored, allow_fetch=True):
+        raise RuntimeError("unerwartet")
+
+    monkeypatch.setattr(processor_module, "parse_log", parse)
+    assert (await env.processor.reanalyze_outdated())["failed"] == 1
+    assert env.store.shas_needing_reanalysis() == ["1" * 64]
 
 
 async def test_reanalyze_key_required_marks_current_and_counts_skipped(env, monkeypatch):
@@ -477,9 +490,17 @@ async def test_reanalyze_does_nothing_when_current_and_logs_counts(env, caplog):
 async def test_reanalyze_logs_counts_without_serials(env, monkeypatch, caplog):
     _outdated(env, "a" * 64)
     write_raw(env.raw, "a" * 64)
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.DEBUG):
         await env.processor.reanalyze_outdated()
     assert "1 aktualisiert" in caplog.text and "a" * 64 not in caplog.text
+
+
+async def test_reanalyze_summary_is_not_logged_above_debug(env, caplog):
+    _outdated(env, "a" * 64)
+    write_raw(env.raw, "a" * 64)
+    with caplog.at_level(logging.INFO):
+        await env.processor.reanalyze_outdated()
+    assert "aktualisiert" not in caplog.text
 
 
 async def test_startup_reanalyzes_outdated_flights(hass, tmp_path, monkeypatch):
