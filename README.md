@@ -35,7 +35,7 @@ Home-Assistant-Integration, die **Flugprotokolle von DJI-Drohnen** (DJI Fly) ent
 - Dienste `dronelog.reprocess` (Logs neu auswerten) und `dronelog.delete_flight`
 
 ### Voraussetzungen
-- Home Assistant 2025.1 oder neuer
+- Home Assistant (entwickelt und getestet mit 2026.5)
 - Für **verschlüsselte** DJI-Protokolle (ab Version 13, praktisch alle neueren Flüge) ein eigener, kostenloser **DJI-App-Key** aus dem [DJI-Entwicklerportal](https://developer.dji.com/user/apps) (App vom Typ „Open API“). Ohne Key sind nur ältere, unverschlüsselte Protokolle auswertbar.
 - Optional die iOS-App **CopterInfo** für den automatischen Upload der Logs.
 
@@ -112,7 +112,7 @@ Die Auswertungen (Ereignisse, Energie, Innenwiderstand, Flugphasen, Windhinweis)
 - Services `dronelog.reprocess` and `dronelog.delete_flight`
 
 ### Requirements
-- Home Assistant 2025.1 or newer
+- Home Assistant (developed and tested with 2026.5)
 - For **encrypted** DJI logs (version 13 and up, practically all recent flights) your own free **DJI App Key** from the [DJI developer portal](https://developer.dji.com/user/apps) (app of type "Open API"). Without a key only older, unencrypted logs can be analyzed.
 - Optionally the iOS app **CopterInfo** for automatic upload of the logs.
 
