@@ -120,7 +120,7 @@ class HoursSinceServiceSensor(MaintenanceEntity, SensorEntity):
     _attr_translation_key = "hours_since_service"
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_state_class = SensorStateClass.MEASUREMENT  # sinkt bei Wartung oder wenn ein Flug gelöscht wird
 
     def __init__(self, coordinator: DroneLogCoordinator, serial: str, model: str) -> None:
         super().__init__(coordinator, serial, model, "hours_since_service")

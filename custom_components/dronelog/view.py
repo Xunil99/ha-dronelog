@@ -17,6 +17,9 @@ from .export import FORMATS, RENDERERS, file_name, has_positions
 from .storage import RawLogStore
 
 
+MAX_ID_DIGITS = 12
+
+
 def _authorised(domain_data: dict, request: web.Request) -> bool:
     header = request.headers.get("Authorization", "")
     supplied = header.removeprefix("Bearer ").strip() if header.startswith("Bearer ") else ""
@@ -99,7 +102,7 @@ class DroneLogExportView(HomeAssistantView):
             return _error("Integration nicht aktiv", HTTPStatus.SERVICE_UNAVAILABLE)
         if fmt not in FORMATS:
             return _error("Unbekanntes Format (csv, gpx oder kml)", HTTPStatus.BAD_REQUEST)
-        if not flight_id.isdigit():
+        if not flight_id.isascii() or not flight_id.isdigit() or len(flight_id) > MAX_ID_DIGITS:
             return _error("Flug nicht gefunden", HTTPStatus.NOT_FOUND)
         detail = await hass.async_add_executor_job(domain_data["db"].get_flight, int(flight_id))
         if detail is None:
@@ -107,6 +110,6 @@ class DroneLogExportView(HomeAssistantView):
         if fmt != "csv" and not has_positions(detail):
             return _error("Der Flug enthält keine Positionen", HTTPStatus.NOT_FOUND)
         tz = dt_util.get_time_zone(hass.config.time_zone) or dt_util.UTC
-        body = RENDERERS[fmt](detail)
+        body = await hass.async_add_executor_job(RENDERERS[fmt], detail)
         return web.Response(body=body.encode("utf-8"), content_type=FORMATS[fmt], charset="utf-8",
                             headers={"Content-Disposition": f'attachment; filename="{file_name(detail, fmt, tz)}"'})

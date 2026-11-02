@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 MAX_NOTE_LENGTH = 2000
 MAX_TAG_LENGTH = 40
 MAX_PLACE_NAME_LENGTH = 100
+MAX_TAGS = 20
+MAX_TAGS_TEXT_LENGTH = MAX_TAGS * (MAX_TAG_LENGTH + 2)  # Eingabe als Komma-Text
 
 
 def parse_tags(text: str) -> list[str]:

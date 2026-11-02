@@ -104,11 +104,15 @@ def test_notes_roundtrip_and_tag_parsing(tmp_path):
     assert FlightNote(text="  ", tags=[]).is_empty and not FlightNote(text="", tags=["x"]).is_empty
 
 
-def test_tag_counts(tmp_path):
+def test_tag_counts_ignore_notes_of_deleted_flights(tmp_path):
     s = FlightStore(tmp_path / "d.db")
-    s.set_note("1", FlightNote(tags=["A", "B"]))
-    s.set_note("2", FlightNote(tags=["A"]))
+    s.add_flight(make_flight(sha="1" * 64), None, "a")
+    s.add_flight(make_flight(sha="2" * 64, start=datetime(2026, 10, 28, tzinfo=UTC)), None, "b")
+    s.set_note("1" * 64, FlightNote(tags=["A", "B"]))
+    s.set_note("2" * 64, FlightNote(tags=["A"]))
+    s.set_note("3" * 64, FlightNote(tags=["A", "Gone"]))              # Flug existiert nicht (mehr)
     assert s.all_tags() == {"A": 2, "B": 1}
+    assert s.all_tags(drone="DRONE1") == {"A": 2, "B": 1}
 
 
 def test_notes_survive_reprocessing_a_flight(tmp_path):
@@ -165,3 +169,14 @@ async def test_ws_logbook_tags_follow_the_filter(hass, hass_ws_client, setup_dro
     await call(client, "note_set", flight_id=2, tags="Zwei")
     assert (await call(client, "logbook"))["result"]["tags"] == {"Eins": 1, "Zwei": 1}
     assert (await call(client, "logbook", drone="D2"))["result"]["tags"] == {"Zwei": 1}
+
+
+async def test_ws_note_set_limits_tag_count_and_total_length(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight())
+    client = await hass_ws_client(hass)
+    many = [f"t{i}" for i in range(21)]
+    assert not (await call(client, "note_set", flight_id=1, text="x", tags=many))["success"]
+    assert not (await call(client, "note_set", flight_id=1, text="x", tags=", ".join(many)))["success"]
+    assert not (await call(client, "note_set", flight_id=1, text="x", tags="a" * 5000))["success"]
+    ok = [f"t{i}" for i in range(20)]
+    assert (await call(client, "note_set", flight_id=1, text="x", tags=ok))["result"]["tags"] == ok

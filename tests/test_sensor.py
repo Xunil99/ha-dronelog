@@ -122,3 +122,14 @@ async def test_delete_flight_refreshes_sensors_immediately(hass, setup_dronelog)
     await hass.services.async_call(DOMAIN, "delete_flight", {"flight_id": 1}, blocking=True)
     await hass.async_block_till_done()
     assert state(hass, setup_dronelog, "sensor", "flights_total").state == "1"
+
+
+async def test_hours_since_service_uses_measurement_state_class(hass, hass_ws_client, setup_dronelog):
+    from homeassistant.components.sensor import SensorStateClass
+    from tests.test_maintenance import entity
+    from tests.test_websocket_api import call
+
+    await add(hass, make_flight(drone="D1"))
+    await call(await hass_ws_client(hass), "maintenance_set", drone="D1", interval_hours=5)
+    await hass.async_block_till_done()
+    assert hass.states.get(entity(hass, "sensor", "D1", "hours_since_service")).attributes["state_class"] == SensorStateClass.MEASUREMENT

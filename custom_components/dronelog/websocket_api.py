@@ -21,7 +21,7 @@ from .flightbook import build_flightbook
 from .flight_modes import flight_mode_segments
 from .flight_phases import flight_phase_durations
 from .hover_wind import hover_wind
-from .notes import MAX_NOTE_LENGTH, MAX_PLACE_NAME_LENGTH, FlightNote, parse_tags
+from .notes import MAX_NOTE_LENGTH, MAX_PLACE_NAME_LENGTH, MAX_TAG_LENGTH, MAX_TAGS, MAX_TAGS_TEXT_LENGTH, FlightNote, parse_tags
 from .maintenance_entities import async_remove_maintenance_entities
 from .maintenance import MaintenanceRow, async_dismiss_notification, mark_serviced, maintenance_rows, set_plan
 from .models import BatteryPoint, BatterySummary, FlightDetail, FlightExtras, FlightRow, Sample
@@ -240,10 +240,16 @@ async def ws_note_get(hass, connection, msg, store) -> None:
 
 
 @_command({vol.Required("flight_id"): int, vol.Optional("text", default=""): vol.All(str, vol.Length(max=MAX_NOTE_LENGTH)),
-           vol.Optional("tags", default=""): vol.Any(str, [str])})
+           vol.Optional("tags", default=""): vol.Any(
+               vol.All(str, vol.Length(max=MAX_TAGS_TEXT_LENGTH)),
+               vol.All([vol.All(str, vol.Length(max=MAX_TAG_LENGTH * 4))], vol.Length(max=MAX_TAGS)))})
 async def ws_note_set(hass, connection, msg, store) -> None:
     raw_tags = msg["tags"] if isinstance(msg["tags"], str) else ",".join(msg["tags"])
-    note = FlightNote(text=msg["text"], tags=parse_tags(raw_tags))
+    tags = parse_tags(raw_tags)
+    if len(tags) > MAX_TAGS:
+        connection.send_error(msg["id"], "invalid_format", f"Höchstens {MAX_TAGS} Tags je Flug.")
+        return
+    note = FlightNote(text=msg["text"], tags=tags)
 
     def save():
         sha = store.sha_for_flight(msg["flight_id"])

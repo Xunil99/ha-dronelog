@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from dataclasses import replace
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -109,3 +110,23 @@ async def test_http_export_requires_login_and_admin(hass, hass_client_no_auth, h
     await hass.async_add_executor_job(hass.data[DOMAIN]["db"].add_flight, make_flight(sha="1" * 64), None, "x")
     assert (await (await hass_client_no_auth()).get("/api/dronelog/export/1/csv")).status == 401
     assert (await (await hass_client(hass_read_only_access_token)).get("/api/dronelog/export/1/csv")).status == 403
+
+
+async def test_http_export_rejects_overlong_ids_and_renders_in_executor(hass, hass_client, setup_dronelog):
+    client = await hass_client()
+    assert (await client.get("/api/dronelog/export/" + "9" * 40 + "/csv")).status == 404
+    assert (await client.get("/api/dronelog/export/1234567890123/csv")).status == 404
+    await hass.async_add_executor_job(hass.data[DOMAIN]["db"].add_flight, make_flight(sha="1" * 64, start=START), None, "x")
+    import threading
+    from custom_components.dronelog import view
+
+    seen = []
+    original = view.RENDERERS["csv"]
+
+    def spy(detail):
+        seen.append(threading.current_thread() is threading.main_thread())
+        return original(detail)
+
+    with patch.dict(view.RENDERERS, {"csv": spy}):
+        assert (await client.get("/api/dronelog/export/1/csv")).status == 200
+    assert seen == [False]
