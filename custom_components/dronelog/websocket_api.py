@@ -22,6 +22,7 @@ from .flight_modes import flight_mode_segments
 from .flight_phases import flight_phase_durations
 from .hover_wind import hover_wind
 from .notes import MAX_NOTE_LENGTH, MAX_PLACE_NAME_LENGTH, FlightNote, parse_tags
+from .maintenance_entities import async_remove_maintenance_entities
 from .maintenance import MaintenanceRow, async_dismiss_notification, mark_serviced, maintenance_rows, set_plan
 from .models import BatteryPoint, BatterySummary, FlightDetail, FlightExtras, FlightRow, Sample
 
@@ -320,8 +321,18 @@ async def ws_maintenance_get(hass, connection, msg, store) -> None:
            vol.Optional("interval_flights"): vol.Any(None, vol.All(int, vol.Range(min=1, max=1_000_000)))})
 async def ws_maintenance_set(hass, connection, msg, store) -> None:
     """Beide Intervalle weggelassen/null = Wartungsüberwachung aus. Ein geändertes Intervall meldet „fällig“ neu."""
-    await hass.async_add_executor_job(set_plan, store, msg["drone"], msg.get("interval_hours"), msg.get("interval_flights"), dt_util.utcnow())
-    connection.send_result(msg["id"], await _maintenance_result(hass, msg["drone"]))
+    hours, flights = msg.get("interval_hours"), msg.get("interval_flights")
+    removing = hours is None and flights is None
+    if not removing and not await hass.async_add_executor_job(store.has_drone_flights, msg["drone"]):
+        connection.send_error(msg["id"], "not_found", "Für diese Drohne liegen keine Flüge vor.")
+        return
+    await hass.async_add_executor_job(set_plan, store, msg["drone"], hours, flights, dt_util.utcnow())
+    result = await _maintenance_result(hass, msg["drone"])
+    if removing:
+        async_remove_maintenance_entities(hass, msg["drone"])
+    if result["status"] is None or result["status"]["level"] != "due":
+        async_dismiss_notification(hass, msg["drone"])  # nichts (mehr) fällig: offene Meldung zurücknehmen
+    connection.send_result(msg["id"], result)
 
 
 @_command({vol.Required("drone"): str})

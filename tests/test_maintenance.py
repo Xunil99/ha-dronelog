@@ -187,6 +187,7 @@ async def test_persistent_notification_once_per_cycle(hass, hass_ws_client, setu
             patch("homeassistant.components.persistent_notification.async_dismiss") as dismiss:
         await call(client, "maintenance_set", drone="D1", interval_flights=1)
         assert create.call_count == 0
+        dismiss.reset_mock()
         await hass.async_add_executor_job(lambda: store.save_plan(replace(store.plans()["D1"], since=T0 - timedelta(seconds=1))))
         await hass.data[DOMAIN]["coordinator"].async_refresh()
         assert create.call_count == 1
@@ -207,7 +208,7 @@ async def test_maintenance_commands_reject_non_admins(hass, hass_ws_client, hass
         assert (await call(client, command, **data))["error"]["code"] == "unauthorized"
 
 
-async def test_removing_the_plan_makes_the_entities_unavailable(hass, hass_ws_client, setup_dronelog):
+async def test_removing_the_plan_removes_the_entities_and_they_return_with_a_new_plan(hass, hass_ws_client, setup_dronelog):
     await add(hass, make_flight(sha="1" * 64, drone="D1"))
     client = await hass_ws_client(hass)
     await call(client, "maintenance_set", drone="D1", interval_hours=1)
@@ -216,4 +217,29 @@ async def test_removing_the_plan_makes_the_entities_unavailable(hass, hass_ws_cl
     assert hass.states.get(due).state == "off"
     await call(client, "maintenance_set", drone="D1")
     await hass.async_block_till_done()
-    assert hass.states.get(due).state == "unavailable"
+    assert entity(hass, "binary_sensor", "D1", "maintenance_due") is None
+    assert entity(hass, "sensor", "D1", "hours_since_service") is None
+    assert hass.states.get(due) is None
+    await call(client, "maintenance_set", drone="D1", interval_hours=2)
+    await hass.async_block_till_done()
+    assert hass.states.get(entity(hass, "binary_sensor", "D1", "maintenance_due")).state == "off"
+
+
+async def test_maintenance_set_for_unknown_drone_is_not_found(hass, hass_ws_client, setup_dronelog):
+    client = await hass_ws_client(hass)
+    response = await call(client, "maintenance_set", drone="NOPE", interval_hours=1)
+    assert response["success"] is False and response["error"]["code"] == "not_found"
+    assert hass.data[DOMAIN]["db"].plans() == {}
+
+
+async def test_notification_is_dismissed_when_interval_change_or_removal_clears_the_due_state(hass, hass_ws_client, setup_dronelog):
+    await add(hass, make_flight(sha="1" * 64, drone="D1", start=T0))
+    client = await hass_ws_client(hass)
+    with patch("homeassistant.components.persistent_notification.async_dismiss") as dismiss:
+        await call(client, "maintenance_set", drone="D1", interval_flights=1)
+        dismiss.reset_mock()
+        await call(client, "maintenance_set", drone="D1", interval_flights=50)
+        assert dismiss.call_count == 1
+        dismiss.reset_mock()
+        await call(client, "maintenance_set", drone="D1")
+        assert dismiss.call_count == 1

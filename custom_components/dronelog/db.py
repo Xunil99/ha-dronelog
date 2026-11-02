@@ -260,6 +260,10 @@ class FlightStore:
         with self._connect() as conn:
             return conn.execute("SELECT 1 FROM flights WHERE sha256=?", (sha256,)).fetchone() is not None
 
+    def has_drone_flights(self, serial: str) -> bool:
+        with self._connect() as conn:
+            return conn.execute("SELECT 1 FROM flights WHERE drone_serial=? LIMIT 1", (serial,)).fetchone() is not None
+
     def delete_flight(self, flight_id: int) -> None:
         with self._lock, self._connect() as conn:
             conn.execute("DELETE FROM flights WHERE id=?", (flight_id,))

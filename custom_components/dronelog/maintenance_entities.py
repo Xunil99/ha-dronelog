@@ -6,6 +6,8 @@ from collections.abc import Callable
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -48,12 +50,25 @@ class MaintenanceEntity(CoordinatorEntity[DroneLogCoordinator]):
         }
 
 
+MAINTENANCE_ENTITIES = (("binary_sensor", "maintenance_due"), ("sensor", "hours_since_service"))
+
+
+def async_remove_maintenance_entities(hass: HomeAssistant, serial: str) -> None:
+    """Entfernt die Wartungs-Entitäten einer Drohne aus der Registry (Plan gelöscht)."""
+    registry = er.async_get(hass)
+    for platform, key in MAINTENANCE_ENTITIES:
+        entity_id = registry.async_get_entity_id(platform, DOMAIN, f"drone_{serial}_{key}")
+        if entity_id:
+            registry.async_remove(entity_id)
+
+
 def async_track_maintenance(entry: ConfigEntry, coordinator: DroneLogCoordinator, async_add_entities: AddEntitiesCallback,
                             factory: Callable[[str, str], Entity]) -> None:
     """Legt für jede Drohne mit aktivem Wartungsplan genau einmal eine Entität an (auch später, wenn ein Plan neu entsteht)."""
     known: set[str] = set()
 
     def add_new() -> None:
+        known.intersection_update(row.serial for row in coordinator.maintenance_rows if row.plan)  # gelöschte Pläne: später neu anlegbar
         new = []
         for row in coordinator.maintenance_rows:
             if row.plan and row.serial not in known:
