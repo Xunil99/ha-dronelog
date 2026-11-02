@@ -66,8 +66,9 @@ def maintenance_status(plan: MaintenancePlan, flights: list[FlightHeader]) -> Ma
     return MaintenanceStatus(used_hours=hours, used_flights=len(since), hours_fraction=hours_fraction, flights_fraction=flights_fraction, level=level)
 
 
-def _rows(store, plans: dict[str, MaintenancePlan]) -> list[MaintenanceRow]:
-    headers = store.flight_headers()
+def _rows(store, plans: dict[str, MaintenancePlan], headers: list[FlightHeader] | None = None) -> list[MaintenanceRow]:
+    if headers is None:
+        headers = store.flight_headers()
     models: dict[str, str] = {}
     for h in headers:
         if h.drone_model and h.drone_serial not in models:
@@ -89,11 +90,11 @@ def maintenance_rows(store) -> list[MaintenanceRow]:
         return _rows(store, store.plans())
 
 
-def evaluate(store) -> MaintenanceReport:
+def evaluate(store, headers: list[FlightHeader] | None = None) -> MaintenanceReport:
     """Berechnet alle Zeilen neu und markiert fällige Wartungen genau einmal je Wartungszyklus als gemeldet."""
     with _LOCK:
         plans = store.plans()
-        rows = _rows(store, plans)
+        rows = _rows(store, plans, headers)
         newly_due = []
         for index, row in enumerate(rows):
             if row.plan and row.status and row.status.level == "due" and not row.plan.notified_due:
@@ -141,9 +142,9 @@ def _texts(language: str, name: str) -> tuple[str, str]:
     return "Maintenance due", f"{name}: The configured maintenance interval has been reached. Check propellers and motors."
 
 
-async def async_check_maintenance(hass: HomeAssistant, store) -> list[MaintenanceRow]:
+async def async_check_maintenance(hass: HomeAssistant, store, headers: list[FlightHeader] | None = None) -> list[MaintenanceRow]:
     """Neuberechnung (Executor) und je Wartungszyklus genau eine dauerhafte Benachrichtigung."""
-    report = await hass.async_add_executor_job(evaluate, store)
+    report = await hass.async_add_executor_job(evaluate, store, headers)
     for row in report.newly_due:
         title, message = _texts(hass.config.language, row.name)
         persistent_notification.async_create(hass, message, title, notification_id=notification_id(row.serial))

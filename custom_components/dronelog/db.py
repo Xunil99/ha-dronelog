@@ -539,10 +539,10 @@ class FlightStore:
                                          last=datetime.fromisoformat(last), latest=history[-1] if history else None, drones=drones))
         return items
 
-    def _drone_stats(self) -> tuple[DroneInfo, ...]:
+    def _drone_stats(self, headers: list[FlightHeader] | None = None) -> tuple[DroneInfo, ...]:
         """Je Drohne: Flüge, Flugzeit, Strecke, verschiedene Akkus und letzter Flug (Kopfwerte mit Plausibilitätsprüfung wie in der iOS-App)."""
         groups: dict[str, list[FlightHeader]] = {}
-        for h in self.flight_headers():
+        for h in (headers if headers is not None else self.flight_headers()):
             groups.setdefault(h.drone_serial, []).append(h)
         return tuple(DroneInfo(
             serial=serial, model=next((h.drone_model for h in group if h.drone_model), ""), flights=len(group),
@@ -554,7 +554,7 @@ class FlightStore:
     def drone_list(self) -> list[DroneInfo]:
         return list(self.overview().drones)
 
-    def overview(self) -> Overview:
+    def overview(self, headers: list[FlightHeader] | None = None) -> Overview:
         with self._connect() as conn:
             batteries = conn.execute("SELECT battery_serial, COUNT(*) FROM flights GROUP BY battery_serial ORDER BY battery_serial").fetchall()
             counts = dict(conn.execute("SELECT status, COUNT(*) FROM files GROUP BY status").fetchall())
@@ -564,7 +564,7 @@ class FlightStore:
             battery_infos.append(BatteryInfo(serial=serial, flights=count, last=history[-1] if history else None))
         return Overview(
             totals=self.totals(),
-            drones=self._drone_stats(),
+            drones=self._drone_stats(headers),
             batteries=tuple(battery_infos),
             pending=counts.get(FileStatus.PENDING.value, 0) + counts.get(FileStatus.PENDING_KEY.value, 0),
             errors=counts.get(FileStatus.ERROR.value, 0),
