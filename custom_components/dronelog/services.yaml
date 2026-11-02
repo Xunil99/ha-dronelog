@@ -2,12 +2,14 @@ reprocess:
   fields:
     sha256:
       required: false
+      example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       selector:
         text:
 delete_flight:
   fields:
     flight_id:
       required: true
+      example: 42
       selector:
         number:
           min: 1
