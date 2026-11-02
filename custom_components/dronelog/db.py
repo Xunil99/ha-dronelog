@@ -214,7 +214,7 @@ class FlightStore:
             return [r[0] for r in rows]
 
     def replace_flight(self, flight: ParsedFlight) -> bool:
-        """Ersetzt Zeitreihe, Akku-Zusammenfassung und Extras eines vorhandenen Flugs atomar (Wetter, Quelle und ID bleiben).
+        """Ersetzt Kopfwerte, Zeitreihe, Akku-Zusammenfassung und Extras eines vorhandenen Flugs atomar (Wetter, Quelle und ID bleiben).
         Bei einem Fehler bleibt der alte Stand erhalten. False, wenn der Flug nicht existiert."""
         with self._lock, self._connect() as conn:
             existing = conn.execute("SELECT id FROM flights WHERE sha256=?", (flight.sha256,)).fetchone()
@@ -223,8 +223,19 @@ class FlightStore:
             flight_id = existing[0]
             conn.execute("DELETE FROM samples WHERE flight_id=?", (flight_id,))
             self._insert_samples(conn, flight_id, flight.samples)
-            conn.execute("UPDATE flights SET battery_json=?, extras_json=?, analysis_version=? WHERE id=?",
-                         (json.dumps(asdict(flight.battery)), extras_to_json(flight.extras), ANALYSIS_VERSION, flight_id))
+            conn.execute("INSERT OR IGNORE INTO drones(serial, model) VALUES (?, ?)", (flight.drone_serial, flight.drone_model))
+            conn.execute(
+                "INSERT INTO batteries(serial, first_seen, last_seen) VALUES (?, ?, ?) "
+                "ON CONFLICT(serial) DO UPDATE SET last_seen=MAX(last_seen, excluded.last_seen), first_seen=MIN(first_seen, excluded.first_seen)",
+                (flight.battery_serial, _iso(flight.start), _iso(flight.start)))
+            start_lat, start_lon = self._valid_position(flight.start_lat, flight.start_lon)
+            end_lat, end_lon = self._end_position(flight)
+            conn.execute(
+                "UPDATE flights SET start_utc=?, duration_s=?, distance_m=?, max_height_m=?, max_speed_ms=?, start_lat=?, start_lon=?, "
+                "end_lat=?, end_lon=?, drone_serial=?, battery_serial=?, battery_json=?, extras_json=?, analysis_version=? WHERE id=?",
+                (_iso(flight.start), flight.duration_s, flight.distance_m, flight.max_height_m, flight.max_speed_ms, start_lat, start_lon,
+                 end_lat, end_lon, flight.drone_serial, flight.battery_serial, json.dumps(asdict(flight.battery)),
+                 extras_to_json(flight.extras), ANALYSIS_VERSION, flight_id))
             return True
 
     def mark_analysis_current(self, sha256: str) -> None:
@@ -233,9 +244,17 @@ class FlightStore:
             conn.execute("UPDATE flights SET analysis_version=? WHERE sha256=?", (ANALYSIS_VERSION, sha256))
 
     @staticmethod
+    def _valid_position(lat: float | None, lon: float | None) -> tuple[float | None, float | None]:
+        if lat is None or lon is None or not (math.isfinite(lat) and math.isfinite(lon)) or abs(lat) > 90 or abs(lon) > 180:
+            return None, None
+        return lat, lon
+
+    @staticmethod
     def _end_position(flight: ParsedFlight) -> tuple[float | None, float | None]:
         positioned = [s for s in flight.samples if s.lat is not None and s.lon is not None]
-        return (positioned[-1].lat, positioned[-1].lon) if positioned else (flight.start_lat, flight.start_lon)
+        if positioned:
+            return FlightStore._valid_position(positioned[-1].lat, positioned[-1].lon)
+        return FlightStore._valid_position(flight.start_lat, flight.start_lon)
 
     def has_flight(self, sha256: str) -> bool:
         with self._connect() as conn:

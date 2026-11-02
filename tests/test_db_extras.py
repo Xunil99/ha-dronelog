@@ -148,3 +148,31 @@ def test_event_kinds_in_rows_and_only_events_filter(tmp_path):
     assert rows["3"].photo_count == 4 and rows["3"].video_s == 9.0
     assert [r.sha256[0] for r in store.list_flights(only_events=True)] == ["2"]
     assert store.count_flights(only_events=True) == 1 and store.count_flights() == 3
+
+
+def test_replace_flight_updates_header_fields(tmp_path):
+    store = FlightStore(tmp_path / "d.db")
+    sha = "f" * 64
+    flight_id = store.add_flight(make_flight(sha=sha), WEATHER, "Quelle.txt")
+    samples = (Sample(t=0.0, lat=49.0, lon=11.0, height=1, speed=1, voltage=8, current=1, charge=90),
+               Sample(t=2.0, lat=49.5, lon=11.5, height=2, speed=2, voltage=8, current=1, charge=89))
+    new = dataclasses.replace(make_flight(sha=sha, samples=samples, drone="DRONE2", battery="BAT2", lat=49.0, lon=11.0,
+                                          duration=777.0, distance=999.0, start=later(3)), max_height_m=88.0, max_speed_ms=21.0)
+    assert store.replace_flight(new) is True
+    detail = store.get_flight(flight_id)
+    assert detail.row.start == later(3) and detail.row.duration_s == 777.0 and detail.row.distance_m == 999.0
+    assert detail.row.max_height_m == 88.0 and detail.row.max_speed_ms == 21.0
+    assert (detail.start_lat, detail.start_lon, detail.end_lat, detail.end_lon) == (49.0, 11.0, 49.5, 11.5)
+    assert detail.row.drone_serial == "DRONE2" and detail.row.battery_serial == "BAT2"
+    assert detail.weather == WEATHER and detail.row.source_name == "Quelle.txt"
+    assert [b.serial for b in store.overview().batteries] == ["BAT2"]
+
+
+def test_replace_flight_invalid_coordinates_become_null(tmp_path):
+    store = FlightStore(tmp_path / "d.db")
+    sha = "f" * 64
+    flight_id = store.add_flight(make_flight(sha=sha), None, "a")
+    bad = dataclasses.replace(make_flight(sha=sha, samples=()), start_lat=95.0, start_lon=200.0)
+    store.replace_flight(bad)
+    detail = store.get_flight(flight_id)
+    assert (detail.start_lat, detail.start_lon, detail.end_lat, detail.end_lon) == (None, None, None, None)
