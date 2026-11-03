@@ -9,6 +9,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -41,8 +42,29 @@ def _last(o: Overview):
     return o.totals.last_flight
 
 
+def _hub_device(entry: ConfigEntry) -> DeviceInfo:
+    return DeviceInfo(identifiers={(DOMAIN, entry.entry_id)}, name="DroneLog", manufacturer="DroneLog")
+
+
+def _via_hub(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    """Felder, mit denen Akkus und Drohnen am Hauptgerät des Kontos hängen.
+
+    Home Assistant 2026.9 meldet via_device als veraltet (eine bloße Kennung,
+    über Konfigurationseinträge hinweg nicht mehr eindeutig) und streicht es in
+    2027.8.0. Der Ersatz ist via_device_id, die Registry-ID des Hauptgeräts; in
+    DeviceInfo geht das seit 2026.8. Das Hauptgerät wird deshalb vorab angelegt:
+    Die Hauptsensoren würden es auch anlegen, aber Entitäten kommen asynchron
+    hinzu, und die Kinder dürfen nicht von dieser Reihenfolge abhängen. Ältere
+    Versionen kennen via_device_id nicht und behalten via_device.
+    """
+    if "via_device_id" not in DeviceInfo.__annotations__:
+        return {"via_device": (DOMAIN, entry.entry_id)}
+    hub = dr.async_get(hass).async_get_or_create(config_entry_id=entry.entry_id, **_hub_device(entry))
+    return {"via_device_id": hub.id}
+
+
 def _main_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator) -> list[DroneLogSensor]:
-    device = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)}, name="DroneLog", manufacturer="DroneLog")
+    device = _hub_device(entry)
     uid = lambda key: f"{entry.entry_id}_{key}"  # noqa: E731
     total = SensorStateClass.TOTAL
     return [
@@ -69,10 +91,11 @@ def _main_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator) -> list[
     ]
 
 
-def _battery_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator, battery: BatteryInfo) -> list[DroneLogSensor]:
+def _battery_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator, battery: BatteryInfo,
+                     via: dict[str, Any]) -> list[DroneLogSensor]:
     serial = battery.serial
     device = DeviceInfo(identifiers={(DOMAIN, f"battery_{serial}")}, name=f"Akku …{serial[-4:]}", manufacturer="DJI",
-                        model="Intelligent Flight Battery", via_device=(DOMAIN, entry.entry_id))
+                        model="Intelligent Flight Battery", **via)
 
     def find(o: Overview) -> BatteryInfo | None:
         return next((b for b in o.batteries if b.serial == serial), None)
@@ -99,10 +122,11 @@ def _battery_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator, batte
     ]
 
 
-def _drone_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator, drone: DroneInfo) -> list[DroneLogSensor]:
+def _drone_sensors(entry: ConfigEntry, coordinator: DroneLogCoordinator, drone: DroneInfo,
+                   via: dict[str, Any]) -> list[DroneLogSensor]:
     serial = drone.serial
     device = DeviceInfo(identifiers={(DOMAIN, f"drone_{serial}")}, name=f"{drone.model or 'Drohne'} …{serial[-4:]}", manufacturer="DJI",
-                        model=drone.model or None, via_device=(DOMAIN, entry.entry_id))
+                        model=drone.model or None, **via)
 
     def find(o: Overview) -> DroneInfo | None:
         return next((d for d in o.drones if d.serial == serial), None)
@@ -133,6 +157,7 @@ class HoursSinceServiceSensor(MaintenanceEntity, SensorEntity):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: DroneLogCoordinator = hass.data[DOMAIN]["coordinator"]
+    via = _via_hub(hass, entry)
     async_add_entities(_main_sensors(entry, coordinator))
     known: set[str] = set()
 
@@ -141,11 +166,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         for battery in coordinator.data.batteries:
             if f"b_{battery.serial}" not in known:
                 known.add(f"b_{battery.serial}")
-                new += _battery_sensors(entry, coordinator, battery)
+                new += _battery_sensors(entry, coordinator, battery, via)
         for drone in coordinator.data.drones:
             if f"d_{drone.serial}" not in known:
                 known.add(f"d_{drone.serial}")
-                new += _drone_sensors(entry, coordinator, drone)
+                new += _drone_sensors(entry, coordinator, drone, via)
         if new:
             async_add_entities(new)
 

@@ -133,3 +133,44 @@ async def test_hours_since_service_uses_measurement_state_class(hass, hass_ws_cl
     await call(await hass_ws_client(hass), "maintenance_set", drone="D1", interval_hours=5)
     await hass.async_block_till_done()
     assert hass.states.get(entity(hass, "sensor", "D1", "hours_since_service")).attributes["state_class"] == SensorStateClass.MEASUREMENT
+
+
+async def test_battery_and_drone_devices_attach_to_the_hub_without_a_deprecation(hass, setup_dronelog, caplog):
+    # Home Assistant 2026.9 deprecates via_device (a bare identifier that is no
+    # longer unique across config entries; it stops working in 2027.8.0).
+    # The devices are linked by the registry id of the hub instead.
+    from homeassistant.helpers import device_registry as dr
+
+    await add(hass, make_flight(battery="B39PP1GAA0H413", drone="DRONE1"))
+    devices = dr.async_entries_for_config_entry(dr.async_get(hass), setup_dronelog.entry_id)
+    hub = next(d for d in devices if (DOMAIN, setup_dronelog.entry_id) in d.identifiers)
+    battery = next(d for d in devices if (DOMAIN, "battery_B39PP1GAA0H413") in d.identifiers)
+    drone = next(d for d in devices if (DOMAIN, "drone_DRONE1") in d.identifiers)
+    assert battery.via_device_id == hub.id
+    assert drone.via_device_id == hub.id
+    assert "deprecated `via_device`" not in caplog.text, caplog.text
+
+
+async def test_the_hub_exists_before_the_main_sensors_are_added(hass, setup_dronelog):
+    # The batteries and drones need the hub's id when their sensors are built,
+    # so it has to be registered up front rather than by the first main sensor.
+    from homeassistant.helpers import device_registry as dr
+
+    devices = dr.async_entries_for_config_entry(dr.async_get(hass), setup_dronelog.entry_id)
+    hubs = [d for d in devices if (DOMAIN, setup_dronelog.entry_id) in d.identifiers]
+    assert len(hubs) == 1 and hubs[0].name == "DroneLog" and hubs[0].manufacturer == "DroneLog"
+
+
+def test_releases_before_via_device_id_keep_using_via_device(monkeypatch):
+    from types import SimpleNamespace
+    from typing import TypedDict
+
+    from custom_components.dronelog import sensor
+
+    class OldDeviceInfo(TypedDict, total=False):
+        identifiers: set
+        via_device: tuple
+
+    monkeypatch.setattr(sensor, "DeviceInfo", OldDeviceInfo)
+    entry = SimpleNamespace(entry_id="entry-1")
+    assert sensor._via_hub(None, entry) == {"via_device": (DOMAIN, "entry-1")}
